@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CampoDesk</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚜</text></svg>">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #0a0f1a;
+    }
+
+    /* Accent bar top */
+    .header {
+      display: flex;
+      align-items: center;
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      height: 50px;
+      flex-shrink: 0;
+      padding: 0 20px;
+      position: relative;
+    }
+    .header::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      transition: background 0.35s ease;
+    }
+    body.s-siembras .header::before { background: linear-gradient(90deg, #16a34a, #4ade80); }
+    body.s-cosecha  .header::before { background: linear-gradient(90deg, #b45309, #fbbf24); }
+
+    /* Brand */
+    .brand {
+      font-size: 15px;
+      font-weight: 800;
+      color: #f1f5f9;
+      letter-spacing: -0.03em;
+      margin-right: 8px;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .brand em { color: #94a3b8; font-style: normal; font-weight: 400; }
+
+    .sep { width: 1px; height: 22px; background: #1e293b; margin: 0 12px; flex-shrink: 0; }
+
+    /* Tabs */
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 18px;
+      height: 50px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #475569;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      transition: color 0.15s, background 0.15s;
+      position: relative;
+      white-space: nowrap;
+      letter-spacing: 0.01em;
+    }
+    .tab:hover { color: #94a3b8; background: rgba(255,255,255,0.04); }
+
+    /* active underline */
+    .tab::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 12px; right: 12px;
+      height: 2px;
+      border-radius: 2px 2px 0 0;
+      opacity: 0;
+      transform: scaleX(0.6);
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .tab.t-siembras::after { background: #16a34a; }
+    .tab.t-cosecha::after  { background: #ca8a04; }
+    .tab.active::after { opacity: 1; transform: scaleX(1); }
+
+    .tab.t-siembras.active { color: #4ade80; background: rgba(22,163,74,0.08); }
+    .tab.t-cosecha.active  { color: #fbbf24; background: rgba(202,138,4,0.08); }
+
+    .tab-ico { font-size: 15px; line-height: 1; }
+
+    /* Section pill — right side */
+    .section-pill {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 99px;
+      transition: all 0.3s;
+    }
+    body.s-siembras .section-pill { background: rgba(22,163,74,0.15); color: #4ade80; }
+    body.s-cosecha  .section-pill { background: rgba(202,138,4,0.15);  color: #fbbf24; }
+
+    /* Frames */
+    .frames {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    iframe.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Loading overlay */
+    .loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: #0a0f1a;
+      z-index: 10;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .loading.show { opacity: 1; pointer-events: auto; }
+
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid #1e293b;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    body.s-siembras .spinner { border-top-color: #16a34a; }
+    body.s-cosecha  .spinner { border-top-color: #ca8a04; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-label {
+      font-size: 12px;
+      color: #475569;
+      letter-spacing: 0.03em;
+    }
+  </style>
+</head>
+<body class="s-siembras">
+
+<header class="header">
+  <div class="brand">Campo<em>Desk</em></div>
+  <div class="sep"></div>
+
+  <button class="tab t-siembras active" id="btn-siembras" onclick="switchTo('siembras')">
+    <span class="tab-ico">🌱</span>
+    Siembras
+  </button>
+
+  <button class="tab t-cosecha" id="btn-cosecha" onclick="switchTo('cosecha')">
+    <span class="tab-ico">🌾</span>
+    Cosecha
+  </button>
+
+  <span class="section-pill" id="pill">Siembras</span>
+</header>
+
+<div class="frames">
+  <div class="loading show" id="loading">
+    <div class="spinner"></div>
+    <span class="loading-label" id="loading-text">Cargando siembras…</span>
+  </div>
+  <iframe id="fr-siembras" src="siembras/index.html" class="active" onload="onLoad('siembras')"></iframe>
+  <iframe id="fr-cosecha"  src="cosecha/index.html"              onload="onLoad('cosecha')"></iframe>
+</div>
+
+<script>
+  const loaded = { siembras: false, cosecha: false };
+  let current = 'siembras';
+
+  const LABELS = { siembras: 'Siembras', cosecha: 'Cosecha' };
+  const LOAD_TEXT = { siembras: 'Cargando siembras…', cosecha: 'Cargando cosecha…' };
+
+  function switchTo(sec) {
+    if (current === sec) return;
+    current = sec;
+
+    document.body.className = 's-' + sec;
+    document.getElementById('pill').textContent = LABELS[sec];
+
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('btn-' + sec).classList.add('active');
+
+    document.querySelectorAll('iframe').forEach(f => f.classList.remove('active'));
+    document.getElementById('fr-' + sec).classList.add('active');
+
+    if (!loaded[sec]) {
+      document.getElementById('loading-text').textContent = LOAD_TEXT[sec];
+      document.getElementById('loading').classList.add('show');
+    }
+  }
+
+  function onLoad(sec) {
+    loaded[sec] = true;
+    if (current === sec) {
+      document.getElementById('loading').classList.remove('show');
+    }
+  }
+</script>
+</body>
+</html>

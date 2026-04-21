@@ -1,0 +1,3366 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Siembras TA-Agrowillem</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; }
+    /* Sync indicator */
+    #sync-indicator { position:fixed; bottom:12px; right:12px; z-index:999; display:flex; align-items:center;
+      gap:6px; background:white; border:1px solid #e5e7eb; border-radius:20px; padding:4px 10px;
+      font-size:11px; color:#6b7280; box-shadow:0 1px 4px rgba(0,0,0,.08); transition:opacity .3s; }
+    #sync-dot { width:8px; height:8px; border-radius:50%; background:#22c55e; transition:background .3s; }
+    #sync-dot.syncing { background:#f59e0b; animation:pulse 1s infinite; }
+    #sync-dot.error { background:#ef4444; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    /* Colaborador — ve todo pero no puede modificar nada salvo facturas */
+    .colab-banner { background:#1e40af; color:white; padding:10px 20px; font-size:13px;
+      display:flex; align-items:center; justify-content:space-between; gap:12px; flex-shrink:0; }
+    /* Ocultar botones de acción en modo colaborador */
+    body.modo-colaborador #campo-actions { display:none !important; }
+    body.modo-colaborador button[onclick="openNuevoCampo()"],
+    body.modo-colaborador button[onclick^="openNuevoLote"],
+    body.modo-colaborador button[onclick^="openAplicacion"],
+    body.modo-colaborador button[onclick^="editCampo"],
+    body.modo-colaborador button[onclick^="deleteCampo"],
+    body.modo-colaborador button[onclick^="openNuevaTemporada"],
+    body.modo-colaborador button[onclick^="openEditLote"],
+    body.modo-colaborador button[onclick^="deleteLote"],
+    body.modo-colaborador button[onclick^="deleteAplicacion"],
+    body.modo-colaborador button[onclick^="exportar"],
+    body.modo-colaborador button[onclick^="imprimir"],
+    body.modo-colaborador button[onclick="openOrgModal()"],
+    body.modo-colaborador button[onclick="copiarLinkColaborador()"],
+    body.modo-colaborador button[onclick="openChangePassModal()"],
+    body.modo-colaborador .group button { display:none !important; }
+    /* En registros: solo lectura */
+    body.modo-colaborador #tab-content-registros button { display:none !important; }
+    body.modo-colaborador #tab-content-registros select,
+    body.modo-colaborador #tab-content-registros input { pointer-events:none; }
+    /* Facturas: solo los inputs de factura y botón asignar son interactivos */
+    body.modo-colaborador #facturas-body input[id^="fi-total"] { pointer-events:none; opacity:.6; }
+    body.modo-colaborador #facturas-body .flex.items-center.gap-3 button { display:none !important; }
+    /* Lotes: solo lectura */
+    body.modo-colaborador #tab-content-lotes button { display:none !important; }
+    /* Plan de siembra: solo lectura */
+    body.modo-colaborador #tab-content-plan button { display:none !important; }
+    .data-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+    .data-table th {
+      background: #14532d; color: white; padding: 8px 10px;
+      text-align: left; white-space: nowrap; font-weight: 500;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .data-table td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+    .data-table tr:hover td { background: #f0fdf4; }
+    .aplic-header-row { background: #f0fdf4; cursor: pointer; }
+    .aplic-header-row:hover { background: #dcfce7; }
+    .aplic-header-row td { border-top: 2px solid #86efac; padding: 8px 10px; }
+    .aplic-detail-row td { border-left: 3px solid #bbf7d0; background: #fafff9; padding: 5px 10px; }
+    .aplic-detail-row:last-of-type td { border-bottom: 2px solid #86efac; }
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 50; display: flex; align-items: flex-start;
+      justify-content: center; padding: 20px; overflow-y: auto;
+    }
+    .modal-box { background: white; border-radius: 14px; padding: 24px; width: 100%; }
+    .tab-active { border-bottom-color: #15803d !important; color: #15803d !important; }
+    input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    .lote-check-item { display:flex; align-items:center; gap:6px; padding:5px 10px;
+      border-radius:8px; border:1px solid #e5e7eb; font-size:12px; }
+    .lote-check-item:has(input[type=checkbox]:checked) { background:#f0fdf4; border-color:#86efac; }
+    .lote-sup-input { width:52px; border:1px solid #d1d5db; border-radius:5px;
+      padding:2px 5px; font-size:11px; text-align:right; background:white; }
+    .lote-sup-input:focus { outline:none; border-color:#16a34a; }
+    .lote-inv-input { width:100px; border:1px solid #d1d5db; border-radius:5px;
+      padding:2px 5px; font-size:11px; background:white; color:#374151; }
+    .lote-inv-input:focus { outline:none; border-color:#16a34a; }
+    .lote-check-item:not(:has(input[type=checkbox]:checked)) .lote-sup-input { opacity:0.45; }
+    .lote-check-item:not(:has(input[type=checkbox]:checked)) .lote-inv-input { opacity:0.45; }
+    .lote-inv-label { font-size:10px; color:#9ca3af; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:500; }
+    ::-webkit-scrollbar { width:5px; height:5px; }
+    ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
+    .ro { background:#f8fafc; color:#64748b; }
+    /* product row inputs */
+    .prod-input {
+      border:1px solid #d1d5db; border-radius:6px; padding:4px 7px;
+      font-size:12px; width:100%; box-sizing:border-box;
+      transition: border-color .15s;
+    }
+    .prod-input:focus { outline:none; border-color:#16a34a; }
+    .prod-input.ro { background:#f8fafc; color:#64748b; cursor:default; }
+    /* product table */
+    .prod-table { border-collapse:collapse; width:100%; font-size:12px; }
+    .prod-table th { background:#f1f5f9; color:#374151; padding:6px 8px;
+      text-align:left; white-space:nowrap; font-weight:600; border-bottom:2px solid #e2e8f0; }
+    .prod-table td { padding:4px 6px; vertical-align:top; }
+    .prod-table tbody tr { border-bottom:1px solid #f1f5f9; }
+    .prod-table tbody tr:hover { background:#fafafa; }
+    /* plan de siembra tabs */
+    .plan-tab-btn { color:#6b7280; }
+    .plan-tab-btn.active { background:#14532d; color:white; }
+    .margen-pos { color:#15803d; font-weight:600; }
+    .margen-neg { color:#dc2626; font-weight:600; }
+    .rend-input { width:70px; border:1px solid #d1d5db; border-radius:6px; padding:3px 6px; text-align:right; font-size:12px; background:white; }
+    .rend-input:focus { outline:none; border-color:#15803d; box-shadow:0 0 0 2px #bbf7d0; }
+    .plan-campo-header { cursor:pointer; transition:background .15s; }
+    .plan-campo-header:hover { background:#e2e8f0 !important; }
+    /* cat-combo */
+    .cat-wrap { position:relative; display:flex; gap:3px; align-items:center; }
+    .cat-wrap select { flex:1; border:1px solid #d1d5db; border-radius:6px; padding:4px 7px;
+      font-size:12px; background:white; cursor:pointer; }
+    .cat-wrap select:focus { outline:none; border-color:#16a34a; }
+    .cat-add-btn { flex-shrink:0; width:22px; height:22px; border-radius:5px;
+      background:#f1f5f9; border:1px solid #d1d5db; color:#6b7280;
+      font-size:14px; line-height:1; cursor:pointer; display:flex; align-items:center;
+      justify-content:center; transition:all .15s; }
+    .cat-add-btn:hover { background:#16a34a; border-color:#16a34a; color:white; }
+  </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden bg-slate-100">
+
+<!-- ══════════ PANTALLA DE LOGIN ══════════ -->
+<div id="login-screen" class="fixed inset-0 bg-green-950 flex items-center justify-center z-[200]">
+  <div class="bg-white rounded-2xl shadow-2xl w-80 overflow-hidden">
+    <div class="bg-green-900 px-8 py-7 text-center">
+      <div class="text-5xl mb-2">🌾</div>
+      <h1 class="text-xl font-bold text-white">Seguimiento siembras</h1>
+      <p class="text-green-400 text-xs mt-0.5">TA-Agrowillem</p>
+    </div>
+    <div class="px-8 py-7 space-y-4">
+      <div>
+        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Contraseña</label>
+        <input type="password" id="login-pass" placeholder="Ingresá tu contraseña"
+          class="mt-1.5 w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-200"
+          onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <p id="login-error" class="text-red-500 text-xs hidden text-center">⚠ Contraseña incorrecta</p>
+      <button onclick="doLogin()"
+        class="w-full bg-green-700 hover:bg-green-600 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors">
+        Ingresar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal cambiar contraseñas (solo admin) -->
+<div id="modal-passwords" class="modal-overlay hidden">
+  <div class="modal-box max-w-sm">
+    <h3 class="text-base font-bold text-gray-800 mb-4">🔑 Contraseñas de acceso</h3>
+    <div class="space-y-4">
+      <div>
+        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Mi contraseña (admin completo)</label>
+        <input type="text" id="pass-admin-input" placeholder="Contraseña admin"
+          class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-500">
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Contraseñas colaboradores</label>
+        <p class="text-xs text-gray-400 mb-1">Una por línea — cada persona puede tener la suya</p>
+        <textarea id="pass-colabs-input" rows="5" placeholder="siembras&#10;eliana&#10;quique"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-500 resize-none font-mono"></textarea>
+      </div>
+      <p class="text-xs text-gray-400">Las contraseñas se guardan en este navegador.</p>
+    </div>
+    <div class="flex gap-2 mt-5">
+      <button onclick="closeModal('modal-passwords')"
+        class="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">Cancelar</button>
+      <button onclick="savePasswords()"
+        class="flex-1 bg-green-700 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-600">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Banner colaborador (oculto por defecto) -->
+<div id="colab-banner" class="colab-banner hidden" style="justify-content:space-between">
+  <div class="flex items-center gap-3">
+    <span class="text-xl">👁</span>
+    <div>
+      <p class="font-bold text-sm">Modo colaborador — Solo lectura</p>
+      <p class="text-blue-200 text-xs">Podés navegar toda la app y asignar números de factura. Los cambios se sincronizan automáticamente.</p>
+    </div>
+  </div>
+  <div id="colab-sync-status" class="text-xs text-blue-200 flex items-center gap-2">
+    <span id="colab-dot" class="inline-block w-2 h-2 rounded-full bg-green-400"></span>
+    <span id="colab-status-text">Conectado</span>
+  </div>
+</div>
+
+<!-- Indicador de sincronización -->
+<div id="sync-indicator">
+  <div id="sync-dot"></div>
+  <span id="sync-text">Guardado</span>
+</div>
+
+<!-- APP CONTENT (sidebar + main side by side) -->
+<div class="flex flex-1 overflow-hidden">
+
+<!-- SIDEBAR -->
+<aside class="w-52 flex-shrink-0 bg-green-950 flex flex-col text-white">
+  <div class="px-4 pt-4 pb-3 border-b border-green-900">
+    <div class="flex items-center gap-2 mb-2.5">
+      <span class="text-lg">🌾</span>
+      <span class="font-semibold text-xs text-green-400 leading-tight">Siembras TA-Agrowillem</span>
+    </div>
+    <button onclick="openOrgModal()"
+      class="w-full flex items-center justify-between bg-green-900 hover:bg-green-800 rounded-lg px-3 py-2 transition-colors group">
+      <div class="text-left min-w-0">
+        <p class="text-xs text-green-400 leading-none mb-0.5">Organización</p>
+        <p id="current-org-name" class="font-bold text-white text-sm truncate leading-tight">—</p>
+      </div>
+      <span class="text-green-400 group-hover:text-white text-base ml-2 flex-shrink-0">⇄</span>
+    </button>
+    <p class="text-green-600 text-xs mt-1.5 px-1" id="sidebar-campana">—</p>
+  </div>
+  <div class="flex-1 overflow-y-auto py-3 px-2">
+    <!-- Vistas globales -->
+    <div class="px-1 pb-2 mb-2 border-b border-green-900 space-y-0.5">
+      <button onclick="showPlanSiembra()" id="btn-plan-siembra"
+        class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-green-300 hover:bg-green-900">
+        <span>🌱</span>
+        <span class="flex-1 text-left font-medium">Plan de siembra</span>
+      </button>
+      <button onclick="showFacturasPendientes()" id="btn-facturas"
+        class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-green-300 hover:bg-green-900">
+        <span>🧾</span>
+        <span class="flex-1 text-left font-medium">Facturas pendientes</span>
+        <span id="facturas-badge" class="hidden bg-orange-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full leading-none">0</span>
+      </button>
+    </div>
+    <p class="text-green-600 text-xs uppercase font-semibold px-2 mb-1.5 tracking-wide">Campañas</p>
+    <div id="campos-list"></div>
+  </div>
+  <div class="p-3 border-t border-green-900 space-y-2">
+    <button onclick="openNuevoCampo()"
+      class="w-full bg-green-800 hover:bg-green-700 text-sm py-2 rounded-lg transition-colors">
+      + Nuevo campo
+    </button>
+    <button onclick="copiarLinkColaborador()"
+      class="w-full bg-blue-800 hover:bg-blue-700 text-white text-xs py-2 rounded-lg transition-colors">
+      🔗 Copiar link colaborador
+    </button>
+    <button onclick="openChangePassModal()" id="btn-change-pass"
+      class="w-full bg-green-900 hover:bg-green-800 text-green-400 text-xs py-2 rounded-lg transition-colors">
+      🔑 Cambiar contraseñas
+    </button>
+    <button onclick="doLogout()"
+      class="w-full bg-transparent hover:bg-green-900 text-green-600 text-xs py-1.5 rounded-lg transition-colors">
+      ↩ Cerrar sesión
+    </button>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="flex-1 flex flex-col overflow-hidden">
+  <header class="bg-white border-b border-gray-200 px-6 py-3.5 flex items-center justify-between flex-shrink-0">
+    <div>
+      <h2 id="campo-title" class="text-base font-bold text-gray-800">Seleccioná un campo</h2>
+      <p id="campo-subtitle" class="text-xs text-gray-400 mt-0.5"></p>
+    </div>
+    <div id="campo-actions" class="hidden items-center gap-2">
+      <button onclick="openNuevoLote()"
+        class="text-sm border border-gray-300 hover:bg-gray-50 px-3 py-1.5 rounded-lg text-gray-700">
+        + Lote
+      </button>
+      <button onclick="openAplicacion()"
+        class="text-sm bg-green-700 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg">
+        + Aplicación / Registro
+      </button>
+      <button onclick="exportarExcel()"
+        class="text-sm bg-blue-700 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg">
+        ↓ Exportar Excel
+      </button>
+    </div>
+  </header>
+
+  <div id="tabs-bar" class="bg-white border-b border-gray-200 px-6 hidden">
+    <div class="flex">
+      <button onclick="setTab('registros')" id="tab-registros"
+        class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500">Registros</button>
+      <button onclick="setTab('dashboard')" id="tab-dashboard"
+        class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500">Dashboard</button>
+      <button onclick="setTab('lotes')" id="tab-lotes"
+        class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500">Lotes</button>
+    </div>
+  </div>
+
+  <main class="flex-1 overflow-auto p-5">
+
+    <!-- Welcome -->
+    <div id="welcome-state" class="flex flex-col items-center justify-center h-full text-center">
+      <div class="text-5xl mb-4">🌾</div>
+      <h3 class="text-xl font-bold text-gray-700 mb-2">Bienvenido a Siembras TA-Agrowillem</h3>
+      <p class="text-gray-400 text-sm mb-6">Creá tu primer campo para empezar</p>
+      <button onclick="openModal('modal-campo')"
+        class="bg-green-700 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-green-600">
+        Crear primer campo
+      </button>
+    </div>
+
+    <!-- Registros -->
+    <div id="tab-content-registros" class="hidden">
+      <div class="bg-white rounded-xl border border-gray-200 p-3 mb-4 flex flex-wrap gap-2 items-center">
+        <select id="filter-lote" onchange="renderRegistros()"
+          class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-green-500">
+          <option value="">Todos los lotes</option>
+        </select>
+        <select id="filter-cultivo" onchange="renderRegistros()"
+          class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-green-500">
+          <option value="">Todos los cultivos</option>
+        </select>
+        <select id="filter-categoria" onchange="renderRegistros()"
+          class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-green-500">
+          <option value="">Todas las categorías</option>
+        </select>
+        <button onclick="clearFilters()" class="text-xs text-gray-400 hover:text-gray-600 ml-1">✕ Limpiar</button>
+      </div>
+
+      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Fecha</th><th>Lote</th><th class="text-right">Sup.</th><th>Cultivo</th>
+                <th>Contratista</th><th>Categoría</th><th>Insumo / Trabajo</th>
+                <th>Unid.</th><th class="text-right">Dosis</th>
+                <th class="text-right">Salida</th><th class="text-right">S. real</th><th class="text-right">Dev.</th>
+                <th>Remito</th><th>OT</th><th>Inversor</th><th>Factura</th>
+                <th class="text-right">$ unit.</th><th class="text-right">$ total</th>
+                <th class="text-right">USD/ha</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="registros-body"></tbody>
+          </table>
+        </div>
+        <div id="registros-empty" class="text-center py-14 text-gray-400 hidden">
+          <p class="font-medium">Sin registros</p>
+          <p class="text-sm mt-1">Usá "+ Aplicación / Registro" para cargar</p>
+        </div>
+        <div id="registros-footer"
+          class="border-t border-gray-100 px-4 py-2.5 bg-gray-50 flex justify-between items-center text-sm hidden">
+          <span id="footer-count" class="text-gray-400"></span>
+          <span id="footer-total" class="font-semibold text-gray-700"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="tab-content-dashboard" class="hidden">
+      <div class="grid grid-cols-4 gap-4 mb-5" id="kpi-cards"></div>
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div class="bg-white rounded-xl border border-gray-200 p-4">
+          <h3 class="font-semibold text-sm text-gray-600 mb-3">Costo por cultivo (USD/ha)</h3>
+          <canvas id="chart-cultivo"></canvas>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-200 p-4">
+          <h3 class="font-semibold text-sm text-gray-600 mb-3">Distribución por categoría</h3>
+          <canvas id="chart-categoria"></canvas>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="bg-white rounded-xl border border-gray-200 p-4">
+          <h3 class="font-semibold text-sm text-gray-600 mb-3">Top 10 insumos / trabajos (USD)</h3>
+          <div id="top-insumos"></div>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-200 p-4">
+          <h3 class="font-semibold text-sm text-gray-600 mb-3">Costo por lote (USD/ha)</h3>
+          <canvas id="chart-lotes"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lotes -->
+    <div id="tab-content-lotes" class="hidden">
+      <div class="grid grid-cols-3 gap-4" id="lotes-grid"></div>
+    </div>
+
+    <!-- Plan de Siembra (vista global) -->
+    <div id="tab-content-plan-siembra" class="hidden">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="font-bold text-gray-800 text-lg">Plan de siembra</h3>
+          <p class="text-xs text-gray-400 mt-0.5">Cultivos por lote, por inversor y campo</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <select id="plan-campana-sel" onchange="setPlanCampana(this.value)"
+            class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-green-500 bg-white font-medium text-gray-700">
+          </select>
+          <div class="flex gap-1 bg-white border border-gray-200 rounded-xl p-1">
+            <button onclick="setPlanTab('dashboard')" id="plan-tab-dashboard"
+              class="plan-tab-btn px-4 py-1.5 text-sm font-medium rounded-lg transition-colors">📊 Dashboard</button>
+            <button onclick="setPlanTab('inversores')" id="plan-tab-inversores"
+              class="plan-tab-btn px-4 py-1.5 text-sm font-medium rounded-lg transition-colors">👤 Por inversor</button>
+            <button onclick="setPlanTab('historia')" id="plan-tab-historia"
+              class="plan-tab-btn px-4 py-1.5 text-sm font-medium rounded-lg transition-colors">📅 Historia</button>
+          </div>
+          <button onclick="exportarPlanSiembra()"
+            class="bg-blue-700 hover:bg-blue-600 text-white text-sm px-3 py-2 rounded-xl font-medium flex items-center gap-1.5">
+            ↓ Excel
+          </button>
+        </div>
+      </div>
+      <div id="plan-body"></div>
+    </div>
+
+    <!-- Facturas Pendientes (vista global) -->
+    <div id="tab-content-facturas" class="hidden">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="font-bold text-gray-800 text-lg">Facturas pendientes</h3>
+          <p class="text-xs text-gray-400 mt-0.5">Labores e insumos sin factura asignada, agrupados por prestador</p>
+        </div>
+        <div class="text-right bg-orange-50 border border-orange-200 rounded-xl px-5 py-3">
+          <p class="text-xs text-orange-500 font-medium">Total pendiente</p>
+          <p id="facturas-total-pendiente" class="text-xl font-bold text-orange-600">$0.00</p>
+          <p id="facturas-count-pendiente" class="text-xs text-gray-400"></p>
+        </div>
+      </div>
+      <!-- Barra de filtro + acciones -->
+      <div class="flex items-center gap-3 mb-5 flex-wrap">
+        <div class="flex items-center gap-2 flex-1 min-w-0">
+          <label class="text-xs font-semibold text-gray-500 whitespace-nowrap">Ver por inversor:</label>
+          <select id="facturas-inv-filter" onchange="renderFacturasPendientes()"
+            class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white min-w-[200px]">
+            <option value="">— Todos los inversores —</option>
+          </select>
+        </div>
+        <button onclick="imprimirFacturas()"
+          class="flex items-center gap-1.5 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm px-3 py-1.5 rounded-lg transition-colors">
+          🖨 Imprimir
+        </button>
+        <button onclick="exportarFacturasExcel()"
+          class="flex items-center gap-1.5 bg-blue-700 hover:bg-blue-600 text-white text-sm px-3 py-1.5 rounded-lg transition-colors">
+          ↓ Excel
+        </button>
+      </div>
+      <div id="facturas-body"></div>
+    </div>
+
+
+  </main>
+</div>
+
+</div><!-- /app-content flex row -->
+
+<!-- ===== MODAL: Organizaciones ===== -->
+<div id="modal-org" class="modal-overlay hidden" onclick="if(event.target===this)closeModal('modal-org')">
+  <div class="modal-box" style="max-width:400px;margin:auto">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="text-base font-bold text-gray-800">Organizaciones</h3>
+      <button onclick="closeModal('modal-org')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+    </div>
+    <div id="org-list" class="space-y-2 mb-5"></div>
+    <div class="border-t border-gray-100 pt-4">
+      <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Nueva organización</p>
+      <div class="flex gap-2">
+        <input id="nueva-org-input" type="text" placeholder="Nombre de la organización…"
+          onkeydown="if(event.key==='Enter') crearOrg()"
+          class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+        <button onclick="crearOrg()"
+          class="bg-green-700 hover:bg-green-600 text-white text-sm px-4 py-2 rounded-lg font-medium">
+          Crear
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Nuevo Campo ===== -->
+<div id="modal-campo" class="modal-overlay hidden" onclick="if(event.target===this)closeModal('modal-campo')">
+  <div class="modal-box" style="max-width:360px;margin:auto">
+    <h3 id="campo-modal-title" class="text-base font-bold text-gray-800 mb-4">Nuevo campo</h3>
+    <input type="hidden" id="campo-edit-id">
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
+        <input id="campo-nombre" type="text" placeholder="ej: Las Blancas"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Campaña</label>
+        <input id="campo-campana" type="text" placeholder="ej: 2025/2026"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Inversor del campo</label>
+        <input id="campo-inversor" type="text" list="list-inversores" placeholder="ej: Sociedad X"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+        <p class="text-xs text-gray-400 mt-1">Se usará por defecto en todos los lotes de este campo</p>
+      </div>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal('modal-campo')" class="text-sm border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50">Cancelar</button>
+      <button id="campo-modal-btn" onclick="saveCampo()" class="text-sm bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-600">Crear</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Nuevo Lote ===== -->
+<div id="modal-lote" class="modal-overlay hidden" onclick="if(event.target===this)closeModal('modal-lote')">
+  <div class="modal-box" style="max-width:360px;margin:auto">
+    <h3 id="lote-modal-title" class="text-base font-bold text-gray-800 mb-4">Nuevo lote</h3>
+    <input type="hidden" id="lote-edit-id">
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
+        <input id="lote-nombre" type="text" placeholder="ej: Lote 6"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Superficie (ha)</label>
+        <input id="lote-sup" type="number" step="0.1" min="0"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Cultivo de primera</label>
+        <input id="lote-cultivo" type="text" list="cultivos-suggest"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+        <datalist id="cultivos-suggest">
+          <option value="Trigo"><option value="Maíz"><option value="Soja primera">
+          <option value="Soja segunda"><option value="Girasol"><option value="Cebada">
+          <option value="Sorgo"><option value="Colza">
+        </datalist>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Cultivo de segunda <span class="text-gray-400 font-normal">(opcional)</span></label>
+        <input id="lote-cultivo2" type="text" list="cultivos-suggest"
+          placeholder="ej: Soja segunda"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+        <p class="text-xs text-gray-400 mt-1">Al cargar trabajos podrás elegir a cuál cultivo pertenecen</p>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Inversor del lote <span class="text-gray-400 font-normal">(opcional)</span></label>
+        <input id="lote-inversor" type="text" list="list-inversores" placeholder="Dejar vacío para usar el del campo"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+      </div>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal('modal-lote')" class="text-sm border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50">Cancelar</button>
+      <button onclick="saveLote()" class="text-sm bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-600">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Aplicación / Registro ===== -->
+<div id="modal-aplicacion" class="modal-overlay hidden" onclick="if(event.target===this)closeModal('modal-aplicacion')">
+  <div class="modal-box" style="max-width:1100px;margin:auto">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 id="aplic-title" class="text-base font-bold text-gray-800">Nueva aplicación / registro</h3>
+        <p class="text-xs text-gray-400 mt-0.5">Podés agregar múltiples productos de una misma aplicación</p>
+      </div>
+      <button onclick="closeModal('modal-aplicacion')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+    </div>
+
+    <!-- Datos comunes -->
+    <div class="bg-slate-50 rounded-xl p-4 mb-4">
+      <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Datos comunes de la aplicación</p>
+      <div class="grid grid-cols-2 gap-4 mb-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Fecha</label>
+          <input id="aplic-fecha" type="date"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">OT</label>
+          <input id="aplic-ot" type="text" list="list-ots"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
+          <datalist id="list-ots"></datalist>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-2">
+          Lote(s)
+          <span class="text-gray-400 font-normal ml-1">— seleccioná uno o varios · el inversor se toma del lote o del campo</span>
+        </label>
+        <div id="aplic-lotes-checks" class="flex flex-wrap gap-2"></div>
+      </div>
+    </div>
+
+    <!-- Info multi-lote -->
+    <div id="aplic-multilote-info" class="hidden mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+      Con varios lotes seleccionados se crearán registros individuales por lote. La salida y el total se calculan automáticamente según la superficie de cada uno.
+    </div>
+
+    <!-- Tabla de productos -->
+    <div class="mb-3">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Productos / Labores</p>
+        <button onclick="addProdRow()" class="text-xs bg-green-700 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
+          + Agregar producto
+        </button>
+      </div>
+
+      <div class="overflow-x-auto border border-gray-200 rounded-xl">
+        <table class="prod-table">
+          <thead>
+            <tr>
+              <th style="min-width:130px">Contratista</th>
+              <th style="min-width:115px">Categoría</th>
+              <th style="min-width:120px" title="Empleado responsable (para Labor, Siembra, etc.)">Responsable</th>
+              <th style="min-width:160px">Insumo / Trabajo</th>
+              <th style="min-width:65px">Unidad</th>
+              <th style="min-width:70px">Dosis</th>
+              <th style="min-width:75px" class="text-right" title="Superficie × Dosis">Salida*</th>
+              <th style="min-width:75px" class="text-right">S. real</th>
+              <th style="min-width:65px" class="text-right">Dev.*</th>
+              <th style="min-width:100px">Remito</th>
+              <th style="min-width:100px">Factura</th>
+              <th style="min-width:80px" class="text-right">$ unit.</th>
+              <th style="min-width:80px" class="text-right">$ total*</th>
+              <th style="width:32px"></th>
+            </tr>
+          </thead>
+          <tbody id="prod-rows"></tbody>
+        </table>
+      </div>
+      <p class="text-xs text-gray-400 mt-1.5">* Calculado automáticamente</p>
+    </div>
+
+    <!-- Total y multi-lote preview -->
+    <div id="aplic-totals" class="mb-4 flex items-center justify-between">
+      <div id="aplic-multilote-preview" class="hidden">
+        <p class="text-xs font-semibold text-gray-500 mb-1">Vista previa por lote:</p>
+        <div id="aplic-preview-body" class="flex gap-3 flex-wrap"></div>
+      </div>
+      <div class="ml-auto text-right">
+        <p class="text-xs text-gray-400">Total aplicación</p>
+        <p id="aplic-grand-total" class="text-xl font-bold text-green-700">$0.00</p>
+        <p id="aplic-records-count" class="text-xs text-gray-400"></p>
+      </div>
+    </div>
+
+    <div class="flex justify-end gap-2 border-t border-gray-100 pt-4">
+      <button onclick="closeModal('modal-aplicacion')" class="text-sm border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50">Cancelar</button>
+      <button onclick="saveAplicacion()" class="text-sm bg-green-700 text-white px-5 py-2 rounded-lg hover:bg-green-600 font-medium">
+        Guardar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Gestionar Categorías ===== -->
+<div id="modal-categorias" class="modal-overlay hidden" onclick="if(event.target===this)closeModal('modal-categorias')">
+  <div class="modal-box" style="max-width:420px;margin:auto">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-base font-bold text-gray-800">Gestionar categorías</h3>
+      <button onclick="closeModal('modal-categorias')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+    </div>
+
+    <!-- Agregar nueva -->
+    <div class="flex gap-2 mb-5">
+      <input id="nueva-cat-input" type="text" placeholder="Nueva categoría…"
+        onkeydown="if(event.key==='Enter') confirmarNuevaCat()"
+        class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+      <button onclick="confirmarNuevaCat()"
+        class="bg-green-700 hover:bg-green-600 text-white text-sm px-4 py-2 rounded-lg font-medium">
+        + Agregar
+      </button>
+    </div>
+
+    <!-- Categorías custom (borrables) -->
+    <div class="mb-4">
+      <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Mis categorías</p>
+      <div id="cats-custom-list" class="space-y-1.5"></div>
+      <p id="cats-custom-empty" class="text-xs text-gray-400 italic hidden">Todavía no agregaste categorías propias.</p>
+    </div>
+
+    <!-- Categorías base (no borrables) -->
+    <div>
+      <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Categorías predefinidas</p>
+      <div class="flex flex-wrap gap-1.5" id="cats-base-list"></div>
+    </div>
+
+    <div class="flex justify-end mt-5 pt-4 border-t border-gray-100">
+      <button onclick="closeModal('modal-categorias')" class="text-sm border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: Nueva Temporada ===== -->
+<div id="modal-nueva-temporada" class="modal-overlay hidden" onclick="if(event.target===this)closeModal('modal-nueva-temporada')">
+  <div class="modal-box" style="max-width:560px;margin:auto">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-base font-bold text-gray-800">Nueva temporada</h3>
+        <p class="text-xs text-gray-400 mt-0.5">Copiá los lotes de una campaña existente y actualizá los cultivos</p>
+      </div>
+      <button onclick="closeModal('modal-nueva-temporada')" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+    </div>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Campo base <span class="text-gray-400 font-normal">(de dónde copiás los lotes)</span></label>
+        <select id="nt-campo-sel" onchange="renderNTLotes()"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+          <option value="">— Seleccioná un campo —</option>
+        </select>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Nueva campaña</label>
+          <input id="nt-campana" type="text" placeholder="ej: 2026/2027"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Inversor del campo</label>
+          <input id="nt-inversor" type="text" list="list-inversores" placeholder="(del campo base)"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+        </div>
+      </div>
+      <div id="nt-lotes-container" class="hidden">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cultivos para la nueva temporada</p>
+          <span class="text-xs text-gray-400">La superficie se copia del campo base</span>
+        </div>
+        <div class="overflow-x-auto border border-gray-200 rounded-xl">
+          <table class="data-table">
+            <thead><tr>
+              <th>Lote</th><th class="text-right">Ha</th><th style="min-width:150px">Cultivo de 1ª</th><th style="min-width:150px">Cultivo de 2ª</th>
+            </tr></thead>
+            <tbody id="nt-lotes-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
+      <button onclick="closeModal('modal-nueva-temporada')" class="text-sm border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50">Cancelar</button>
+      <button onclick="saveNuevaTemporada()" class="text-sm bg-green-700 text-white px-5 py-2 rounded-lg hover:bg-green-600 font-medium">
+        🌱 Crear nueva temporada
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- hidden datalists -->
+<datalist id="list-contratistas"></datalist>
+<datalist id="list-insumos"></datalist>
+<datalist id="list-responsables"></datalist>
+<datalist id="list-inversores"></datalist>
+
+<script>
+// ─── FIREBASE ────────────────────────────────────────────────────────
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCt_OcSe4oLs-0IC4Wxlsy0FgIf_UBWzMA",
+  authDomain: "siembras-baa0c.firebaseapp.com",
+  projectId: "siembras-baa0c",
+  storageBucket: "siembras-baa0c.firebasestorage.app",
+  messagingSenderId: "925038351583",
+  appId: "1:925038351583:web:5ad92760ab80a0ad9e056a"
+};
+
+let _fbApp, _fsDb, _fbAuth, _fsUnsubscribe;
+try {
+  _fbApp  = firebase.initializeApp(FIREBASE_CONFIG);
+  _fsDb   = firebase.firestore();
+  _fbAuth = firebase.auth();
+} catch(e) { console.warn('Firebase init error:', e); }
+
+let ES_COLABORADOR = false;
+const FS_ORG_ID = 'ta-agrowillem';
+
+// Documento de config en Firestore (contraseñas guardadas en la nube, no en localStorage)
+function _fsConfigDoc() { return _fsDb?.collection('config').doc(FS_ORG_ID); }
+
+async function doLogin() {
+  const pass = document.getElementById('login-pass').value.trim();
+  const err  = document.getElementById('login-error');
+  err.classList.add('hidden');
+  if (!pass) return;
+
+  try {
+    const snap = await _fsConfigDoc().get();
+    const passAdmin  = snap.exists ? (snap.data().passAdmin  || '') : '';
+    const passColabs = snap.exists ? (snap.data().passColabs || []) : [];
+
+    let role = null;
+    if (pass === passAdmin)           role = 'admin';
+    else if (passColabs.includes(pass)) role = 'colaborador';
+
+    if (role) {
+      await _fbAuth.signInAnonymously();
+      sessionStorage.setItem('agro_role', role);
+      ES_COLABORADOR = (role === 'colaborador');
+      document.getElementById('login-screen').classList.add('hidden');
+      initApp();
+    } else {
+      err.classList.remove('hidden');
+      document.getElementById('login-pass').value = '';
+      document.getElementById('login-pass').focus();
+    }
+  } catch(e) {
+    alert('Error de conexión: ' + e.message);
+  }
+}
+
+async function doLogout() {
+  sessionStorage.removeItem('agro_role');
+  await _fbAuth.signOut().catch(()=>{});
+  location.reload();
+}
+
+async function openChangePassModal() {
+  try {
+    const snap = await _fsConfigDoc().get();
+    const pa     = snap.exists ? (snap.data().passAdmin  || '') : '';
+    const colabs = snap.exists ? (snap.data().passColabs || []) : [];
+    document.getElementById('pass-admin-input').value  = pa;
+    document.getElementById('pass-colabs-input').value = colabs.join('\n');
+    openModal('modal-passwords');
+  } catch(e) {
+    alert('Error al cargar contraseñas: ' + e.message);
+  }
+}
+
+async function savePasswords() {
+  const pa = document.getElementById('pass-admin-input').value.trim();
+  const colabs = document.getElementById('pass-colabs-input').value
+    .split('\n').map(s => s.trim()).filter(Boolean);
+  if (!pa)               { alert('La contraseña de admin no puede estar vacía.'); return; }
+  if (!colabs.length)    { alert('Agregá al menos una contraseña de colaborador.'); return; }
+  if (colabs.includes(pa)) { alert('La contraseña de admin no puede repetirse en colaboradores.'); return; }
+  try {
+    await _fsConfigDoc().set({ passAdmin: pa, passColabs: colabs }, { merge: true });
+    closeModal('modal-passwords');
+    alert('✅ Contraseñas actualizadas y guardadas en la nube.');
+  } catch(e) {
+    alert('Error al guardar: ' + e.message);
+  }
+}
+
+function _fsDoc() { return _fsDb?.collection('siembras').doc(FS_ORG_ID); }
+
+// Indicador visual de sync
+function _syncStatus(estado) {
+  const dot  = document.getElementById('sync-dot');
+  const txt  = document.getElementById('sync-text');
+  if (!dot || !txt) return;
+  if (estado === 'syncing') { dot.className='syncing'; txt.textContent='Guardando…'; }
+  else if (estado === 'ok')  { dot.className=''; dot.style.background='#22c55e'; txt.textContent='Guardado'; }
+  else if (estado === 'error'){ dot.className='error'; txt.textContent='Sin conexión'; }
+}
+
+async function _saveToCloud(d) {
+  if (!_fsDb) return;
+  _syncStatus('syncing');
+  try {
+    await _fsDoc().set({
+      campos: d.campos || [],
+      registros: d.registros || [],
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    _syncStatus('ok');
+  } catch(e) {
+    console.warn('Cloud save error:', e);
+    _syncStatus('error');
+  }
+}
+
+function _refreshCurrentView() {
+  renderSidebar();
+  updateFacturasBadge();
+  if (st.globalView === 'facturas')      renderFacturasPendientes();
+  else if (st.globalView === 'plan-siembra') renderPlanSiembra();
+  else if (st.campoId) {
+    document.getElementById('campo-subtitle').textContent =
+      `Campaña ${getCampo(st.campoId)?.campana||'—'} · ${getCampo(st.campoId)?.lotes.length||0} lote${getCampo(st.campoId)?.lotes.length!==1?'s':''}`;
+    if (st.tab==='registros') renderRegistros();
+    else if (st.tab==='dashboard') renderDashboard();
+    else if (st.tab==='lotes') renderLotes();
+  }
+}
+
+function _setupCloudListener() {
+  if (!_fsDb) return;
+  if (_fsUnsubscribe) _fsUnsubscribe();
+  _fsUnsubscribe = _fsDoc().onSnapshot(snap => {
+    if (!snap.exists) return;
+    const data = { campos: snap.data().campos || [], registros: snap.data().registros || [] };
+    const local = JSON.stringify({ campos: db.campos, registros: db.registros });
+    if (JSON.stringify(data) !== local) {
+      db = data;
+      localStorage.setItem(dataKey(st.orgId), JSON.stringify(db));
+      _refreshCurrentView();
+    }
+    // Actualizar estado colaborador
+    const cd = document.getElementById('colab-dot');
+    const ct = document.getElementById('colab-status-text');
+    if (cd) { cd.style.background='#4ade80'; }
+    if (ct) ct.textContent = 'Conectado';
+  }, err => {
+    console.warn('Snapshot error:', err);
+    _syncStatus('error');
+    const ct = document.getElementById('colab-status-text');
+    if (ct) ct.textContent = 'Sin conexión';
+  });
+}
+
+function copiarLinkColaborador() {
+  const url = window.location.href.split('?')[0] + '?rol=colaborador';
+  navigator.clipboard.writeText(url).then(() => {
+    alert('✅ Link copiado:\n\n' + url + '\n\nCompartilo con quien necesite asignar facturas.\nPodrá ver toda la app pero solo asignar números de factura.');
+  }).catch(() => {
+    prompt('Copiá este link y compartilo:', url);
+  });
+}
+
+// ─── DB + ORGS ────────────────────────────────────────────────────────
+const ORGS_KEY   = 'agrolabores_orgs';
+const CURR_KEY   = 'agrolabores_current_org';
+const LEGACY_KEY = 'agrolabores_v1';
+
+function uid() { return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2); }
+function orgsLoad() { return JSON.parse(localStorage.getItem(ORGS_KEY) || 'null'); }
+function orgsSave(o) { localStorage.setItem(ORGS_KEY, JSON.stringify(o)); }
+function dataKey(orgId) { return `agrolabores_v1_${orgId}`; }
+function dbLoad() { return JSON.parse(localStorage.getItem(dataKey(st.orgId)) || '{"campos":[],"registros":[]}'); }
+function dbSave(d) {
+  localStorage.setItem(dataKey(st.orgId), JSON.stringify(d));
+  _saveToCloud(d);
+}
+
+// ─── STATE ───────────────────────────────────────────────────────────
+let db = { campos: [], registros: [] };
+let st = { campoId: null, tab: 'registros', charts: {}, globalView: null, orgId: null, planTab: 'dashboard', planCampana: '2026/2027', sidebarCampana: '2026/2027' };
+let aplicEditId = null;
+let rowSeq = 0;
+const expandedGroups = new Set();
+const expandedCampanas = new Set();
+let pendingCampana = '';
+let _pendingItems = [];
+let _filteredItems = [];
+
+
+function openNuevoCampo(campana = '') {
+  pendingCampana = campana;
+  document.getElementById('campo-edit-id').value = '';
+  document.getElementById('campo-nombre').value = '';
+  document.getElementById('campo-campana').value = campana;
+  document.getElementById('campo-inversor').value = '';
+  document.getElementById('campo-modal-title').textContent = 'Nuevo campo';
+  document.getElementById('campo-modal-btn').textContent = 'Crear';
+  openModal('modal-campo');
+}
+
+function editCampo(id) {
+  const c = getCampo(id);
+  if (!c) return;
+  document.getElementById('campo-edit-id').value = id;
+  document.getElementById('campo-nombre').value = c.nombre;
+  document.getElementById('campo-campana').value = c.campana || '';
+  document.getElementById('campo-inversor').value = c.inversor || '';
+  document.getElementById('campo-modal-title').textContent = 'Editar campo';
+  document.getElementById('campo-modal-btn').textContent = 'Guardar';
+  openModal('modal-campo');
+}
+
+function deleteCampo(id) {
+  const c = getCampo(id);
+  if (!c) return;
+  const nRegs = db.registros.filter(r => r.campoId === id).length;
+  const msg = `¿Eliminar "${c.nombre}"? Se eliminarán ${c.lotes.length} lote(s) y ${nRegs} registro(s).`;
+  if (!confirm(msg)) return;
+  db.campos = db.campos.filter(x => x.id !== id);
+  db.registros = db.registros.filter(r => r.campoId !== id);
+  dbSave(db);
+  if (st.campoId === id) {
+    st.campoId = null;
+    document.getElementById('campo-title').textContent = 'Seleccioná un campo';
+    document.getElementById('campo-subtitle').textContent = '';
+    document.getElementById('campo-actions').style.display = 'none';
+    document.getElementById('tabs-bar').classList.add('hidden');
+    ['registros','dashboard','lotes'].forEach(t =>
+      document.getElementById(`tab-content-${t}`).classList.add('hidden'));
+  }
+  renderSidebar();
+}
+
+function toggleGroup(aplicId) {
+  if (expandedGroups.has(aplicId)) expandedGroups.delete(aplicId);
+  else expandedGroups.add(aplicId);
+  const open = expandedGroups.has(aplicId);
+  document.querySelectorAll(`tr[data-aplic="${aplicId}"]`).forEach(r => r.classList.toggle('hidden', !open));
+  const icon = document.querySelector(`tr[data-aplic-header="${aplicId}"] .grp-icon`);
+  if (icon) icon.textContent = open ? '▼' : '▶';
+}
+
+// ─── BOOT ────────────────────────────────────────────────────────────
+window.onload = async () => {
+  const role = sessionStorage.getItem('agro_role');
+  if (role === 'admin' || role === 'colaborador') {
+    try {
+      await _fbAuth.signInAnonymously();
+      ES_COLABORADOR = (role === 'colaborador');
+      document.getElementById('login-screen').classList.add('hidden');
+      initApp();
+      return;
+    } catch(e) {
+      sessionStorage.removeItem('agro_role');
+    }
+  }
+  document.getElementById('login-pass').focus();
+};
+
+async function initApp() {
+  // Inicializar organizaciones
+  let orgs = orgsLoad();
+  if (!orgs) {
+    const defId = uid();
+    orgs = [{ id: defId, nombre: 'TA-Agrowillem' }];
+    orgsSave(orgs);
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy) localStorage.setItem(dataKey(defId), legacy);
+    st.orgId = defId;
+  } else {
+    st.orgId = localStorage.getItem(CURR_KEY) || orgs[0].id;
+    if (!orgs.find(o => o.id === st.orgId)) st.orgId = orgs[0].id;
+  }
+  localStorage.setItem(CURR_KEY, st.orgId);
+
+  // Cargar datos: primero localStorage (instantáneo), luego Firebase
+  db = dbLoad();
+
+  if (ES_COLABORADOR) {
+    // ── MODO COLABORADOR ──────────────────────────────────────────
+    document.body.classList.add('modo-colaborador');
+    document.getElementById('colab-banner').classList.remove('hidden');
+    document.getElementById('sync-indicator').classList.add('hidden');
+
+    // Cargar datos frescos desde Firebase
+    if (_fsDb) {
+      try {
+        const snap = await _fsDoc().get();
+        if (snap.exists) db = { campos: snap.data().campos||[], registros: snap.data().registros||[] };
+      } catch(e) { console.warn('Firebase load error:', e); }
+    }
+
+    // Mostrar app completa (igual que admin, pero CSS restringe edición)
+    renderSidebar();
+    updateOrgHeader();
+    updateFacturasBadge();
+
+    // Ir a facturas pendientes por defecto
+    showFacturasPendientes();
+
+    _setupCloudListener();
+    return;
+  }
+
+  // ── MODO ADMIN NORMAL ──────────────────────────────────────────
+  // Cargar desde Firebase si hay conexión
+  if (_fsDb) {
+    try {
+      const snap = await _fsDoc().get();
+      if (snap.exists) {
+        const cloudData = { campos: snap.data().campos||[], registros: snap.data().registros||[] };
+        // Usar la versión con más datos (la más reciente)
+        if (cloudData.campos.length >= db.campos.length) {
+          db = cloudData;
+          localStorage.setItem(dataKey(st.orgId), JSON.stringify(db));
+        } else {
+          // localStorage tiene más datos → subir a la nube
+          _saveToCloud(db);
+        }
+      } else if (db.campos.length > 0) {
+        // Firebase vacío pero localStorage tiene datos → subir
+        _saveToCloud(db);
+      }
+    } catch(e) { console.warn('Firebase load error:', e); }
+  }
+
+  renderSidebar();
+  updateOrgHeader();
+  updateFacturasBadge();
+  _syncStatus('ok');
+
+  if (db.campos.length > 0) {
+    const preferred =
+      db.campos.find(c => normalizaCampana(c.campana) === st.sidebarCampana && c.lotes && c.lotes.length > 0) ||
+      db.campos.find(c => normalizaCampana(c.campana) === st.sidebarCampana) ||
+      db.campos.find(c => c.lotes && c.lotes.length > 0) ||
+      db.campos[0];
+    selectCampo(preferred.id);
+  }
+
+  // Escuchar cambios en tiempo real
+  _setupCloudListener();
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────
+function round2(v) { return Math.round(v * 100) / 100; }
+function round4(v) { return Math.round(v * 10000) / 10000; }
+function fmtDate(s) { if (!s) return ''; const [y,m,d]=s.split('-'); return `${d}/${m}/${y}`; }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function today() { return new Date().toISOString().split('T')[0]; }
+function getCampo(id) { return db.campos.find(c => c.id === id); }
+function getReg(campoId) { return db.registros.filter(r => r.campoId === campoId); }
+function catColor(cat) {
+  const m = { Labor:'bg-gray-100 text-gray-700', Herbicida:'bg-orange-100 text-orange-700',
+    Fungicida:'bg-purple-100 text-purple-700', Insecticida:'bg-red-100 text-red-700',
+    Coadyuvante:'bg-yellow-100 text-yellow-700', Pulverizada:'bg-blue-100 text-blue-700',
+    Fertilizante:'bg-green-100 text-green-700', Semilla:'bg-amber-100 text-amber-700',
+    Siembra:'bg-lime-100 text-lime-700', 'Aplicacion de urea':'bg-cyan-100 text-cyan-700',
+    'Aplicacion de yeso':'bg-stone-100 text-stone-700', Otros:'bg-gray-100 text-gray-500' };
+  return m[cat] || 'bg-gray-100 text-gray-600';
+}
+function uniq(arr) { return [...new Set(arr.filter(Boolean))]; }
+
+function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+// ─── SIDEBAR ─────────────────────────────────────────────────────────
+function renderSidebar() {
+  const list = document.getElementById('campos-list');
+  list.innerHTML = '';
+
+  // Todas las campañas existentes ordenadas desc
+  const allCamps = [...new Set(db.campos.map(c => normalizaCampana(c.campana) || '(sin campaña)'))].sort((a,b)=>b.localeCompare(a));
+
+  // Campaña activa en el sidebar = la más reciente, o la del campo seleccionado
+  if (!st.sidebarCampana || !allCamps.includes(st.sidebarCampana)) {
+    st.sidebarCampana = allCamps[0] || '';
+  }
+  if (st.campoId) {
+    const sel = getCampo(st.campoId);
+    if (sel) st.sidebarCampana = normalizaCampana(sel.campana) || st.sidebarCampana;
+  }
+
+  // Solo los campos de la campaña activa
+  const campos = db.campos.filter(c => (normalizaCampana(c.campana) || '(sin campaña)') === st.sidebarCampana)
+    .sort((a,b) => a.nombre.localeCompare(b.nombre));
+
+  // Selector de campaña en el sidebar
+  const campSel = document.createElement('div');
+  campSel.className = 'px-2 mb-2';
+  campSel.innerHTML = `<select onchange="setSidebarCampana(this.value)"
+    class="w-full bg-green-900 text-green-200 text-xs font-bold rounded-lg px-2 py-1.5 border border-green-800 focus:outline-none cursor-pointer">
+    ${allCamps.map(c=>`<option value="${esc(c)}"${c===st.sidebarCampana?' selected':''}>${esc(c)} (${db.campos.filter(x=>(normalizaCampana(x.campana)||'(sin campaña)')===c).length})</option>`).join('')}
+  </select>`;
+  list.appendChild(campSel);
+
+  // Botón agregar campo a esta campaña
+  const addBtn = document.createElement('div');
+  addBtn.className = 'px-2 mb-2';
+  addBtn.innerHTML = `<button onclick="openNuevoCampo('${esc(st.sidebarCampana)}')"
+    class="w-full text-left text-green-500 hover:text-green-300 text-xs px-2 py-1 hover:bg-green-900 rounded-lg transition-colors">
+    + Campo en ${esc(st.sidebarCampana)}
+  </button>`;
+  list.appendChild(addBtn);
+
+  if (!campos.length) {
+    const empty = document.createElement('p');
+    empty.className = 'text-green-600 text-xs px-3 py-2';
+    empty.textContent = 'Sin campos en esta campaña';
+    list.appendChild(empty);
+  }
+
+  campos.forEach(c => {
+    const active = st.campoId === c.id;
+    const div = document.createElement('div');
+    div.className = 'group flex items-center pl-3 pr-2 py-1.5 rounded-lg text-sm cursor-pointer transition-colors '
+      + (active ? 'bg-green-800 text-white' : 'text-green-300 hover:bg-green-900');
+    div.innerHTML = `
+      <span class="flex-1 truncate font-medium">${esc(c.nombre)}</span>
+      <span class="text-xs opacity-40 group-hover:hidden">${c.lotes.length}L</span>
+      <div class="hidden group-hover:flex items-center gap-1 ml-1" onclick="event.stopPropagation()">
+        <button onclick="openNuevaTemporada('${c.id}')" title="Nueva temporada"
+          class="hover:text-green-300 opacity-60 hover:opacity-100 text-xs px-1">⊕</button>
+        <button onclick="editCampo('${c.id}')" title="Editar"
+          class="hover:text-white opacity-60 hover:opacity-100 text-xs px-1">✏</button>
+        <button onclick="deleteCampo('${c.id}')" title="Eliminar"
+          class="hover:text-red-300 opacity-60 hover:opacity-100 text-xs px-1">✕</button>
+      </div>`;
+    div.onclick = (e) => { if (e.target.tagName !== 'BUTTON') selectCampo(c.id); };
+    list.appendChild(div);
+  });
+
+  document.getElementById('sidebar-campana').textContent =
+    campos.length ? `${campos.length} campo${campos.length!==1?'s':''}` : '—';
+  document.getElementById('welcome-state').classList.toggle('hidden', db.campos.length > 0);
+}
+
+function setSidebarCampana(camp) {
+  st.sidebarCampana = camp;
+  st.planCampana = camp;
+  renderSidebar();
+  if (st.globalView === 'plan-siembra') {
+    _refreshPlanCampanaSel();
+    renderPlanSiembra();
+  }
+}
+
+// ─── ORGANIZACIONES ──────────────────────────────────────────────────
+function updateOrgHeader() {
+  const orgs = orgsLoad() || [];
+  const org = orgs.find(o => o.id === st.orgId);
+  document.getElementById('current-org-name').textContent = org ? org.nombre : '—';
+}
+
+function renderOrgModal() {
+  const orgs = orgsLoad() || [];
+  document.getElementById('org-list').innerHTML = orgs.map(o => {
+    const active = o.id === st.orgId;
+    return `<div class="flex items-center gap-2 p-3 rounded-xl border-2 transition-colors cursor-pointer ${active ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'}"
+      onclick="selectOrg('${o.id}')">
+      <div class="flex-1 min-w-0">
+        <p class="font-bold text-gray-800 text-sm truncate">${esc(o.nombre)}</p>
+        <p class="text-xs text-gray-400">${active ? '✓ Activa ahora' : 'Click para cambiar'}</p>
+      </div>
+      <div class="flex gap-1 flex-shrink-0" onclick="event.stopPropagation()">
+        <button onclick="renameOrg('${o.id}')" title="Renombrar"
+          class="text-xs text-blue-400 hover:text-blue-600 border border-blue-200 px-1.5 py-0.5 rounded">✏</button>
+        ${orgs.length > 1
+          ? `<button onclick="deleteOrg('${o.id}')" title="Eliminar"
+               class="text-xs text-red-400 hover:text-red-600 border border-red-200 px-1.5 py-0.5 rounded">✕</button>`
+          : ''}
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('nueva-org-input').value = '';
+}
+
+function openOrgModal() {
+  renderOrgModal();
+  document.getElementById('modal-org').classList.remove('hidden');
+}
+
+function selectOrg(orgId) {
+  st.orgId = orgId;
+  localStorage.setItem(CURR_KEY, orgId);
+  db = dbLoad();
+  // Reset UI
+  st.campoId = null;
+  st.globalView = null;
+  expandedGroups.clear();
+  expandedCampanas.clear();
+  closeModal('modal-org');
+  hideAllGlobalViews();
+  document.getElementById('campo-title').textContent = 'Seleccioná un campo';
+  document.getElementById('campo-subtitle').textContent = '';
+  document.getElementById('campo-actions').classList.add('hidden');
+  document.getElementById('tabs-bar').classList.add('hidden');
+  document.getElementById('welcome-state').classList.toggle('hidden', db.campos.length > 0);
+  updateOrgHeader();
+  renderSidebar();
+  updateFacturasBadge();
+  if (db.campos.length > 0) selectCampo(db.campos[0].id);
+}
+
+function crearOrg() {
+  const nombre = document.getElementById('nueva-org-input').value.trim();
+  if (!nombre) return;
+  const orgs = orgsLoad() || [];
+  if (orgs.find(o => o.nombre.toLowerCase() === nombre.toLowerCase())) {
+    alert('Ya existe una organización con ese nombre.'); return;
+  }
+  const newOrg = { id: uid(), nombre };
+  orgs.push(newOrg);
+  orgsSave(orgs);
+  // Inicializar datos vacíos para la nueva org
+  localStorage.setItem(dataKey(newOrg.id), JSON.stringify({ campos: [], registros: [] }));
+  renderOrgModal();
+}
+
+function renameOrg(orgId) {
+  const orgs = orgsLoad() || [];
+  const o = orgs.find(x => x.id === orgId);
+  if (!o) return;
+  const nuevo = prompt('Nuevo nombre:', o.nombre);
+  if (!nuevo || !nuevo.trim()) return;
+  o.nombre = nuevo.trim();
+  orgsSave(orgs);
+  updateOrgHeader();
+  renderOrgModal();
+}
+
+function deleteOrg(orgId) {
+  const orgs = orgsLoad() || [];
+  if (orgs.length <= 1) { alert('No podés eliminar la única organización.'); return; }
+  const o = orgs.find(x => x.id === orgId);
+  if (!confirm(`¿Eliminar la organización "${o?.nombre}"? Se borrarán todos sus datos.`)) return;
+  const newOrgs = orgs.filter(x => x.id !== orgId);
+  orgsSave(newOrgs);
+  localStorage.removeItem(dataKey(orgId));
+  // Si era la activa, cambiar a la primera disponible
+  if (st.orgId === orgId) selectOrg(newOrgs[0].id);
+  else renderOrgModal();
+}
+
+// ─── NUEVA TEMPORADA ─────────────────────────────────────────────────
+function openNuevaTemporada(campoId = null) {
+  const sel = document.getElementById('nt-campo-sel');
+  // Ordenar campos por nombre + campaña para facilitar elección
+  const sorted = db.campos.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)||(a.campana||'').localeCompare(b.campana||''));
+  sel.innerHTML = '<option value="">— Seleccioná un campo —</option>' +
+    sorted.map(c=>`<option value="${c.id}">${esc(c.nombre)} · ${esc(c.campana||'sin campaña')} (${c.lotes.length} lotes)</option>`).join('');
+
+  document.getElementById('nt-campana').value = '';
+  document.getElementById('nt-inversor').value = '';
+  document.getElementById('nt-lotes-container').classList.add('hidden');
+  document.getElementById('nt-lotes-body').innerHTML = '';
+
+  if (campoId) {
+    sel.value = campoId;
+    renderNTLotes();
+  }
+  openModal('modal-nueva-temporada');
+}
+
+function renderNTLotes() {
+  const campoId = document.getElementById('nt-campo-sel').value;
+  const container = document.getElementById('nt-lotes-container');
+  if (!campoId) { container.classList.add('hidden'); return; }
+  const campo = getCampo(campoId);
+  if (!campo || !campo.lotes.length) { container.classList.add('hidden'); return; }
+
+  // Pre-fill inversor
+  document.getElementById('nt-inversor').value = campo.inversor || '';
+
+  // Sugerir próxima campaña
+  const campanaInput = document.getElementById('nt-campana');
+  if (!campanaInput.value && campo.campana) {
+    const m = campo.campana.match(/(\d{4})\D+(\d{4})/);
+    if (m) campanaInput.value = `${+m[1]+1}/${+m[2]+1}`;
+    else {
+      const m2 = campo.campana.match(/(\d{4})/);
+      if (m2) campanaInput.value = String(+m2[1]+1);
+    }
+  }
+
+  const tbody = document.getElementById('nt-lotes-body');
+  tbody.innerHTML = campo.lotes.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(l=>`
+    <tr>
+      <td class="font-medium">${esc(l.nombre)}</td>
+      <td class="text-right text-gray-500">${(l.superficie||0).toFixed(1)}</td>
+      <td>
+        <input type="text" list="cultivos-suggest" value="${esc(l.cultivo||'')}"
+          id="nt-c1-${l.id}"
+          class="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-500">
+      </td>
+      <td>
+        <input type="text" list="cultivos-suggest" value="${esc(l.cultivo2||'')}"
+          id="nt-c2-${l.id}" placeholder="(opcional)"
+          class="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-500">
+      </td>
+    </tr>`).join('');
+
+  container.classList.remove('hidden');
+}
+
+function saveNuevaTemporada() {
+  const campoId = document.getElementById('nt-campo-sel').value;
+  const campana = document.getElementById('nt-campana').value.trim();
+  const inversor = document.getElementById('nt-inversor').value.trim();
+  if (!campoId) { alert('Seleccioná el campo base.'); return; }
+  if (!campana) { alert('Ingresá la campaña para la nueva temporada.'); return; }
+
+  const campo = getCampo(campoId);
+  if (!campo) return;
+  if (!campo.lotes.length) { alert('El campo base no tiene lotes.'); return; }
+
+  const newLotes = campo.lotes.map(l => {
+    const c1 = (document.getElementById(`nt-c1-${l.id}`)?.value||'').trim();
+    const c2 = (document.getElementById(`nt-c2-${l.id}`)?.value||'').trim();
+    return { id: uid(), nombre: l.nombre, superficie: l.superficie, inversor: l.inversor||'',
+      cultivo: c1 || l.cultivo, cultivo2: c2 || null };
+  });
+
+  const newCampo = { id: uid(), nombre: campo.nombre, campana, inversor, lotes: newLotes };
+  db.campos.push(newCampo);
+  dbSave(db);
+  closeModal('modal-nueva-temporada');
+  expandedCampanas.add(campana);
+  renderSidebar();
+  selectCampo(newCampo.id);
+}
+
+// ─── FACTURAS PENDIENTES ─────────────────────────────────────────────
+const CATS_FACTURABLES = ['Labor','Pulverizada','Siembra','Aplicacion de urea','Aplicacion de yeso'];
+const CATS_BASE = ['Labor','Herbicida','Fungicida','Insecticida','Coadyuvante','Pulverizada',
+  'Fertilizante','Semilla','Siembra','Aplicacion de urea','Aplicacion de yeso','Otros'];
+
+function getCatsCustom() {
+  return JSON.parse(localStorage.getItem('agrolabores_cats_custom') || '[]');
+}
+function setCatsCustom(arr) {
+  localStorage.setItem('agrolabores_cats_custom', JSON.stringify(arr));
+}
+function getCatsAll() {
+  return [...CATS_BASE, ...getCatsCustom().filter(c => !CATS_BASE.includes(c))];
+}
+function saveCatCustom(cat) {
+  const custom = getCatsCustom();
+  if (!custom.includes(cat)) { custom.push(cat); setCatsCustom(custom); }
+}
+function deleteCatCustom(cat) {
+  setCatsCustom(getCatsCustom().filter(c => c !== cat));
+  refreshAllCatSelects();
+  renderManageCats();
+}
+function buildCatOptions(selected) {
+  return getCatsAll().map(c =>
+    `<option value="${esc(c)}"${c===selected?' selected':''}>${esc(c)}</option>`
+  ).join('');
+}
+function refreshAllCatSelects() {
+  document.querySelectorAll('[id^="pr"][id$="-categoria"]').forEach(sel => {
+    const cur = sel.value;
+    sel.innerHTML = buildCatOptions(cur);
+    sel.value = cur;
+  });
+}
+function addCategoriaCustom(rowId) {
+  // Guardar el rowId pendiente y abrir el modal
+  window._catRowId = rowId;
+  openManageCats();
+}
+function openManageCats() {
+  renderManageCats();
+  openModal('modal-categorias');
+  setTimeout(() => document.getElementById('nueva-cat-input')?.focus(), 80);
+}
+function renderManageCats() {
+  const custom = getCatsCustom();
+  const listEl = document.getElementById('cats-custom-list');
+  const emptyEl = document.getElementById('cats-custom-empty');
+  const baseEl  = document.getElementById('cats-base-list');
+
+  // Custom
+  listEl.innerHTML = custom.map(c => `
+    <div class="flex items-center justify-between px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+      <span class="text-sm font-medium text-green-800">${esc(c)}</span>
+      <button onclick="deleteCatCustom('${esc(c)}')"
+        class="text-red-400 hover:text-red-600 text-xs px-1.5 py-0.5 border border-red-200 hover:border-red-400 rounded transition-colors">
+        ✕ Eliminar
+      </button>
+    </div>`).join('');
+  emptyEl.classList.toggle('hidden', custom.length > 0);
+
+  // Base (solo referencia)
+  baseEl.innerHTML = CATS_BASE.map(c =>
+    `<span class="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-full">${esc(c)}</span>`
+  ).join('');
+}
+function confirmarNuevaCat() {
+  const input = document.getElementById('nueva-cat-input');
+  const cat = (input?.value || '').trim();
+  if (!cat) { input?.focus(); return; }
+  if (getCatsAll().includes(cat)) { alert('Esa categoría ya existe.'); return; }
+  saveCatCustom(cat);
+  input.value = '';
+  // Refrescar selects y seleccionar la nueva en la fila si aplica
+  refreshAllCatSelects();
+  if (window._catRowId != null) {
+    const sel = document.getElementById(`pr${window._catRowId}-categoria`);
+    if (sel) sel.value = cat;
+  }
+  renderManageCats();
+  input.focus();
+}
+function updateFacturasBadge() {
+  const keys = new Set(
+    db.registros.filter(r => !r.factura && CATS_FACTURABLES.includes(r.categoria))
+      .map(r => `${r.aplicacionId||r.id}||${r.contratista||''}||${r.inversor||''}`)
+  );
+  const n = keys.size;
+  const badge = document.getElementById('facturas-badge');
+  if (badge) { badge.textContent = n; badge.classList.toggle('hidden', n === 0); }
+  const btn = document.getElementById('btn-facturas');
+  if (btn) btn.classList.toggle('bg-green-900', st.globalView === 'facturas');
+}
+
+// ─── PLAN DE SIEMBRA ─────────────────────────────────────────────────
+function showPlanSiembra() {
+  st.globalView = 'plan-siembra';
+  st.campoId = null;
+  renderSidebar();
+  document.getElementById('campo-title').textContent = 'Plan de siembra';
+  document.getElementById('campo-subtitle').textContent = 'Cultivos por lote organizados por inversor';
+  document.getElementById('campo-actions').classList.add('hidden');
+  document.getElementById('tabs-bar').classList.add('hidden');
+  document.getElementById('welcome-state').classList.add('hidden');
+  hideAllGlobalViews();
+  document.getElementById('tab-content-plan-siembra').classList.remove('hidden');
+  _refreshPlanCampanaSel();
+  renderPlanSiembra();
+}
+
+function _refreshPlanCampanaSel() {
+  const sel = document.getElementById('plan-campana-sel');
+  if (!sel) return;
+  // Obtener campañas únicas ordenadas desc
+  const camps = [...new Set(db.campos.map(c => normalizaCampana(c.campana)).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
+  sel.innerHTML = camps.map(c => `<option value="${esc(c)}"${c===st.planCampana?' selected':''}>${esc(c)}</option>`).join('');
+  // Si la campaña guardada no existe, usar la más reciente
+  if (!camps.includes(st.planCampana) && camps.length) st.planCampana = camps[0];
+  sel.value = st.planCampana;
+}
+
+// Set para campos expandidos en la vista Por Inversor
+const expandedPlanCampos = new Set();
+
+function setPlanTab(tab) {
+  st.planTab = tab || 'dashboard';
+  document.querySelectorAll('.plan-tab-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById(`plan-tab-${st.planTab}`);
+  if (btn) btn.classList.add('active');
+  renderPlanSiembra();
+}
+
+function togglePlanCampo(key) {
+  expandedPlanCampos.has(key) ? expandedPlanCampos.delete(key) : expandedPlanCampos.add(key);
+  renderPlanSiembra();
+}
+
+function setPlanCampana(val) {
+  st.planCampana = val;
+  renderPlanSiembra();
+}
+
+function _buildPlanData() {
+  // Retorna { byInv, allLotes, totalHa, totalLotes }
+  const byInv = {};
+  const allLotes = []; // { lote, campoNombre, campana, inv }
+  // Filtrar por campaña seleccionada (excepto en Historia que muestra todas)
+  const camposFiltrados = st.planTab === 'historia'
+    ? db.campos
+    : db.campos.filter(c => normalizaCampana(c.campana) === st.planCampana);
+  camposFiltrados.forEach(campo => {
+
+    const campana = normalizaCampana(campo.campana) || '';
+    campo.lotes.forEach(lote => {
+      const inv = lote.inversor || campo.inversor || '(sin inversor)';
+      if (!byInv[inv]) byInv[inv] = [];
+      let entry = byInv[inv].find(e => e.campoId === campo.id);
+      if (!entry) {
+        entry = { campoId: campo.id, campoNombre: campo.nombre, campana, lotes: [] };
+        byInv[inv].push(entry);
+      }
+      entry.lotes.push(lote);
+      allLotes.push({ lote, campoNombre: campo.nombre, campana, inv });
+    });
+  });
+  const totalHa = allLotes.reduce((s, r) => s + (r.lote.superficie || 0), 0);
+  return { byInv, allLotes, totalHa, totalLotes: allLotes.length, camposFiltrados };
+}
+
+function _cultivoCell(lote) {
+  return lote.cultivo2
+    ? `<span class="badge bg-lime-100 text-lime-700">${esc(lote.cultivo)}</span>
+       <span class="text-gray-400 text-xs mx-1">+</span>
+       <span class="badge bg-amber-100 text-amber-700">${esc(lote.cultivo2)}</span>`
+    : `<span class="badge bg-lime-100 text-lime-700">${esc(lote.cultivo || '—')}</span>`;
+}
+
+function renderPlanSiembra() {
+  if (!st.planTab) st.planTab = 'dashboard';
+  // Sync tab buttons
+  document.querySelectorAll('.plan-tab-btn').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.getElementById(`plan-tab-${st.planTab}`);
+  if (activeBtn) activeBtn.classList.add('active');
+
+  const body = document.getElementById('plan-body');
+  if (!db.campos.length) {
+    body.innerHTML = `<div class="text-center py-20 text-gray-400">
+      <div class="text-5xl mb-4">🌱</div>
+      <p class="font-semibold text-lg text-gray-600">Sin campos cargados</p>
+      <p class="text-sm mt-2">Creá un campo para empezar el plan de siembra</p>
+    </div>`;
+    return;
+  }
+
+  const { byInv, allLotes, totalHa, totalLotes, camposFiltrados } = _buildPlanData();
+
+  if (st.planTab === 'dashboard') {
+    body.innerHTML = _renderPlanDashboard(byInv, allLotes, totalHa, totalLotes, camposFiltrados);
+  } else if (st.planTab === 'historia') {
+    body.innerHTML = _renderPlanHistoria();
+  } else {
+    body.innerHTML = _renderPlanInversores(byInv);
+  }
+}
+
+function _renderPlanDashboard(byInv, allLotes, totalHa, totalLotes, camposFiltrados) {
+  if (!totalLotes) return `<div class="text-center py-16 text-gray-400"><p class="font-medium">Ningún campo tiene lotes configurados todavía</p></div>`;
+
+  // KPIs
+  const byCultivo = {};
+  allLotes.forEach(({ lote }) => {
+    const s = lote.superficie || 0;
+    const c1 = lote.cultivo || '(sin cultivo)';
+    byCultivo[c1] = (byCultivo[c1] || 0) + s;
+    if (lote.cultivo2) byCultivo[lote.cultivo2] = (byCultivo[lote.cultivo2] || 0) + s;
+  });
+  const nCultivos = Object.keys(byCultivo).length;
+  const nInversores = Object.keys(byInv).length;
+  const nCampos = db.campos.length;
+
+  let html = `<div class="grid grid-cols-4 gap-4 mb-5">`;
+  [
+    { label: 'Superficie total', val: `${totalHa.toFixed(1)} ha`, sub: `${totalLotes} lotes` },
+    { label: 'Cultivos distintos', val: nCultivos, sub: 'en el plan' },
+    { label: 'Inversores', val: nInversores, sub: `${nCampos} campo${nCampos!==1?'s':''}` },
+    { label: 'Doble cultivo', val: allLotes.filter(r=>r.lote.cultivo2).length, sub: 'lotes con 2ª' },
+  ].map(k => html += `<div class="bg-white rounded-xl border border-gray-200 p-4">
+    <p class="text-xs text-gray-400 mb-1">${k.label}</p>
+    <p class="text-2xl font-bold text-gray-800">${k.val}</p>
+    <p class="text-xs text-gray-400 mt-1">${k.sub}</p>
+  </div>`);
+  html += `</div>`;
+
+  // Resumen por cultivo
+  html += `<div class="bg-white rounded-xl border border-gray-200 p-4 mb-5">
+    <h4 class="font-semibold text-sm text-gray-600 mb-3">Resumen por cultivo</h4>
+    <table class="data-table">
+      <thead><tr><th>Cultivo</th><th class="text-right">Lotes</th><th class="text-right">Ha totales</th><th class="text-right">% del plan</th><th>Campos</th></tr></thead>
+      <tbody>`;
+  const sortedCultivos = Object.entries(byCultivo).sort((a,b) => b[1]-a[1]);
+  sortedCultivos.forEach(([cult, ha]) => {
+    const lotesDeCult = allLotes.filter(r => r.lote.cultivo === cult || r.lote.cultivo2 === cult);
+    const campos = [...new Set(lotesDeCult.map(r => r.campoNombre))].join(', ');
+    const pct = totalHa > 0 ? (ha / totalHa * 100).toFixed(1) : 0;
+    html += `<tr>
+      <td><span class="badge bg-lime-100 text-lime-700">${esc(cult)}</span></td>
+      <td class="text-right font-medium">${lotesDeCult.length}</td>
+      <td class="text-right font-bold">${ha.toFixed(1)}</td>
+      <td class="text-right text-gray-400">${pct}%</td>
+      <td class="text-xs text-gray-500">${esc(campos)}</td>
+    </tr>`;
+  });
+  // Barra visual simple
+  html += `</tbody></table>
+    <div class="mt-3 flex rounded-full overflow-hidden h-3">`;
+  const colors = ['#16a34a','#d97706','#2563eb','#dc2626','#7c3aed','#0891b2','#65a30d','#c2410c'];
+  sortedCultivos.forEach(([cult, ha], i) => {
+    const pct = totalHa > 0 ? (ha / totalHa * 100).toFixed(1) : 0;
+    html += `<div title="${cult}: ${ha.toFixed(1)} ha" style="width:${pct}%;background:${colors[i%colors.length]}" class="h-3 transition-all"></div>`;
+  });
+  html += `</div></div>`;
+
+  // Tabla completa de lotes
+  html += `<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+      <h4 class="font-semibold text-sm text-gray-600">Todos los lotes</h4>
+      <span class="text-xs text-gray-400">${totalLotes} lotes · ${totalHa.toFixed(1)} ha</span>
+    </div>
+    <div class="overflow-x-auto"><table class="data-table">
+      <thead><tr><th>Campo</th><th>Campaña</th><th>Lote</th><th>Cultivo</th><th class="text-right">Ha</th><th>Inversor</th></tr></thead>
+      <tbody>`;
+  // Agrupar por campo para mostrar subtotales — solo campos filtrados
+  (camposFiltrados||db.campos).slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(campo => {
+    if (!campo.lotes.length) return;
+    const haC = campo.lotes.reduce((s,l)=>s+(l.superficie||0),0);
+    campo.lotes.sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(lote => {
+      const inv = lote.inversor || campo.inversor || '—';
+      html += `<tr>
+        <td class="font-medium">${esc(campo.nombre)}</td>
+        <td class="text-xs text-gray-400">${esc(campo.campana||'')}</td>
+        <td class="font-medium">${esc(lote.nombre)}</td>
+        <td>${_cultivoCell(lote)}</td>
+        <td class="text-right font-semibold">${(lote.superficie||0).toFixed(1)}</td>
+        <td class="text-xs text-gray-500">${esc(inv)}</td>
+      </tr>`;
+    });
+    html += `<tr class="bg-slate-50 border-t border-slate-200">
+      <td colspan="3" class="text-xs text-slate-500 font-semibold pl-4">Subtotal ${esc(campo.nombre)}</td>
+      <td class="text-xs text-slate-400">${[...new Set(campo.lotes.map(l=>l.cultivo).concat(campo.lotes.map(l=>l.cultivo2).filter(Boolean)))].join(', ')}</td>
+      <td class="text-right font-bold text-slate-700">${haC.toFixed(1)}</td>
+      <td></td>
+    </tr>`;
+  });
+  html += `</tbody></table></div></div>`;
+  return html;
+}
+
+function _renderPlanInversores(byInv) {
+  if (!Object.keys(byInv).length) return `<div class="text-center py-16 text-gray-400"><p class="font-medium">Ningún campo tiene lotes configurados todavía</p></div>`;
+
+  let html = '';
+  Object.keys(byInv).sort().forEach(inv => {
+    const entries = byInv[inv];
+    const haInv = entries.reduce((s,e)=>s+e.lotes.reduce((ss,l)=>ss+(l.superficie||0),0),0);
+    const lotesInv = entries.reduce((s,e)=>s+e.lotes.length,0);
+    const byCultivoInv = {};
+    entries.forEach(e=>e.lotes.forEach(l=>{
+      byCultivoInv[l.cultivo||'—']=(byCultivoInv[l.cultivo||'—']||0)+(l.superficie||0);
+      if(l.cultivo2) byCultivoInv[l.cultivo2]=(byCultivoInv[l.cultivo2]||0)+(l.superficie||0);
+    }));
+    const tags = Object.entries(byCultivoInv).sort((a,b)=>b[1]-a[1])
+      .map(([c,ha])=>`<span class="text-xs bg-green-100 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-medium">${esc(c)} · ${ha.toFixed(1)} ha</span>`).join('');
+
+    html += `<div class="mb-6 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+      <div class="px-4 py-3 bg-green-950 text-white">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-3">
+            <span class="text-lg">👤</span>
+            <span class="font-bold text-base">${esc(inv)}</span>
+            <span class="bg-green-800 text-green-300 text-xs px-2 py-0.5 rounded-full">${lotesInv} lote${lotesInv!==1?'s':''}</span>
+          </div>
+          <span class="font-bold text-green-300">${haInv.toFixed(1)} ha</span>
+        </div>
+        <div class="flex flex-wrap gap-1.5">${tags}</div>
+      </div>`;
+
+    entries.sort((a,b)=>a.campoNombre.localeCompare(b.campoNombre)).forEach(entry => {
+      const key = `${inv}||${entry.campoId}`;
+      const open = expandedPlanCampos.has(key);
+      const haCampo = entry.lotes.reduce((s,l)=>s+(l.superficie||0),0);
+      const cultivosCampo = [...new Set(entry.lotes.flatMap(l=>[l.cultivo,l.cultivo2].filter(Boolean)))].join(', ');
+
+      html += `<div class="border-t border-gray-100">
+        <div class="plan-campo-header flex items-center justify-between px-4 py-2.5 bg-slate-50 select-none"
+             onclick="togglePlanCampo('${esc(key)}')">
+          <div class="flex items-center gap-2">
+            <span class="text-green-700 font-bold text-sm w-4 text-center">${open?'▼':'▶'}</span>
+            <span class="font-bold text-slate-700 text-sm">${esc(entry.campoNombre)}</span>
+            <span class="text-xs text-slate-400">${esc(entry.campana)}</span>
+            <span class="text-xs text-slate-400 hidden sm:inline">· ${esc(cultivosCampo)}</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-slate-400">${entry.lotes.length} lote${entry.lotes.length!==1?'s':''}</span>
+            <span class="text-sm font-semibold text-slate-600">${haCampo.toFixed(1)} ha</span>
+          </div>
+        </div>`;
+
+      if (open) {
+        html += `<table class="data-table"><thead><tr>
+          <th>Lote</th><th>Cultivo</th><th class="text-right">Ha</th><th>Inversor del lote</th>
+          </tr></thead><tbody>`;
+        entry.lotes.sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(lote => {
+          const invLote = lote.inversor
+            ? `<span class="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">${esc(lote.inversor)}</span>`
+            : `<span class="text-xs text-gray-400">— del campo</span>`;
+          html += `<tr>
+            <td class="font-medium">${esc(lote.nombre)}</td>
+            <td>${_cultivoCell(lote)}</td>
+            <td class="text-right font-semibold">${(lote.superficie||0).toFixed(1)}</td>
+            <td>${invLote}</td>
+          </tr>`;
+        });
+        const byCultivoC = {};
+        entry.lotes.forEach(l=>{
+          byCultivoC[l.cultivo||'—']=(byCultivoC[l.cultivo||'—']||0)+(l.superficie||0);
+          if(l.cultivo2) byCultivoC[l.cultivo2]=(byCultivoC[l.cultivo2]||0)+(l.superficie||0);
+        });
+        const totStr = Object.entries(byCultivoC).map(([c,h])=>`${c}: ${h.toFixed(1)} ha`).join(' · ');
+        html += `<tr class="bg-slate-50 border-t-2 border-slate-200">
+          <td colspan="2" class="text-xs text-slate-500 font-medium">${totStr}</td>
+          <td class="text-right font-bold text-slate-700">${haCampo.toFixed(1)}</td><td></td>
+        </tr></tbody></table>`;
+      }
+      html += `</div>`;
+    });
+    html += `</div>`;
+  });
+  return html;
+}
+
+function normalizaCampana(s) {
+  if (!s) return s;
+  // "26-27" → "2026/2027", "25-26" → "2025/2026", etc.
+  const m = s.match(/^(\d{2})[-\/](\d{2})$/);
+  if (m) return `20${m[1]}/20${m[2]}`;
+  // "2026-2027" → "2026/2027"
+  const m2 = s.match(/^(\d{4})[-](\d{4})$/);
+  if (m2) return `${m2[1]}/${m2[2]}`;
+  return s;
+}
+
+function _renderPlanHistoria() {
+  if (!db.campos.length) return `<div class="text-center py-20 text-gray-400"><div class="text-5xl mb-4">📅</div><p class="font-semibold text-lg text-gray-600">Sin campos cargados</p></div>`;
+
+  // Agrupar campos por nombre (mismo campo físico, diferentes campañas)
+  // Normalizar campana para evitar duplicados por formato ("26-27" = "2026/2027")
+  const byField = {};
+  db.campos.forEach(campo => {
+    const k = campo.nombre;
+    if (!byField[k]) byField[k] = [];
+    byField[k].push({ ...campo, campana: normalizaCampana(campo.campana) });
+  });
+
+  const fieldNames = Object.keys(byField).sort();
+  let html = `<div class="mb-4 px-1">
+    <p class="text-xs text-gray-400">Los campos con el mismo nombre se tratan como el mismo campo físico a través de las campañas. Usá el botón <strong>⊕</strong> en el sidebar para crear una nueva temporada copiando los lotes.</p>
+  </div>`;
+
+  let anyLotes = false;
+  fieldNames.forEach(fieldName => {
+    const campos = byField[fieldName].slice().sort((a,b)=>(a.campana||'').localeCompare(b.campana||''));
+    // Campañas únicas ordenadas
+    const campanas = [...new Set(campos.map(c=>c.campana||'(sin campaña)'))].sort();
+    // Lotes únicos (por nombre) en cualquier campaña
+    const loteNames = [...new Set(campos.flatMap(c=>c.lotes.map(l=>l.nombre)))].sort();
+    if (!loteNames.length) return;
+    anyLotes = true;
+
+    // Pivot: loteName → campana → { cultivo, cultivo2, sup }
+    const pivot = {};
+    campos.forEach(campo => {
+      const camp = campo.campana || '(sin campaña)';
+      campo.lotes.forEach(lote => {
+        if (!pivot[lote.nombre]) pivot[lote.nombre] = {};
+        pivot[lote.nombre][camp] = { cultivo: lote.cultivo||'', cultivo2: lote.cultivo2||'', sup: lote.superficie||0 };
+      });
+    });
+
+    // Total ha de la campaña más reciente
+    const latestCamp = campanas[campanas.length-1];
+    const latestHa = loteNames.reduce((s,ln)=>{
+      const d=pivot[ln]?.[latestCamp]; return s+(d?d.sup:0);
+    },0);
+
+    html += `<div class="mb-6 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+      <div class="px-4 py-3 bg-green-950 text-white flex items-center gap-3">
+        <span class="text-lg">🏡</span>
+        <span class="font-bold text-base">${esc(fieldName)}</span>
+        <span class="bg-green-800 text-green-300 text-xs px-2 py-0.5 rounded-full">${campanas.length} campaña${campanas.length!==1?'s':''}</span>
+        <span class="bg-green-800 text-green-300 text-xs px-2 py-0.5 rounded-full">${loteNames.length} lote${loteNames.length!==1?'s':''}</span>
+        <span class="ml-auto text-green-300 text-sm font-semibold">${latestHa.toFixed(1)} ha</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="data-table">
+          <thead><tr>
+            <th>Lote</th>
+            <th class="text-right">Ha</th>
+            ${campanas.map(c=>`<th class="text-center">${esc(c)}</th>`).join('')}
+          </tr></thead>
+          <tbody>`;
+
+    loteNames.forEach(loteName => {
+      const loteRow = pivot[loteName] || {};
+      // Sup: del lote en la campaña más reciente que lo tenga
+      let sup = 0;
+      campanas.slice().reverse().some(camp => { if(loteRow[camp]){sup=loteRow[camp].sup;return true;} return false; });
+      html += `<tr>
+        <td class="font-medium">${esc(loteName)}</td>
+        <td class="text-right text-gray-600">${sup>0?sup.toFixed(1):'—'}</td>
+        ${campanas.map(camp => {
+          const d = loteRow[camp];
+          if (!d) return `<td class="text-center"><span class="text-gray-300 text-sm">—</span></td>`;
+          let cell = `<span class="badge bg-lime-100 text-lime-700">${esc(d.cultivo||'—')}</span>`;
+          if (d.cultivo2) cell += ` <span class="text-gray-300 text-xs">+</span><span class="badge bg-amber-100 text-amber-700">${esc(d.cultivo2)}</span>`;
+          return `<td class="text-center">${cell}</td>`;
+        }).join('')}
+      </tr>`;
+    });
+
+    // Fila de totales por campaña
+    html += `<tr class="bg-slate-50 border-t-2 border-slate-200">
+      <td class="text-xs font-semibold text-slate-500">Total ha</td>
+      <td></td>
+      ${campanas.map(camp=>{
+        const ha = loteNames.reduce((s,ln)=>{const d=pivot[ln]?.[camp]; return s+(d?d.sup:0);},0);
+        return `<td class="text-center font-bold text-slate-700">${ha>0?ha.toFixed(1):'—'}</td>`;
+      }).join('')}
+    </tr>`;
+
+    html += `</tbody></table></div></div>`;
+  });
+
+  if (!anyLotes) return `<div class="text-center py-16 text-gray-400"><p class="font-medium">No hay lotes cargados en ningún campo</p></div>`;
+  return html;
+}
+
+function hideAllGlobalViews() {
+  ['registros','dashboard','lotes','facturas','plan-siembra'].forEach(t =>
+    document.getElementById(`tab-content-${t}`)?.classList.add('hidden'));
+}
+
+function showFacturasPendientes() {
+  st.globalView = 'facturas';
+  st.campoId = null;
+  renderSidebar();
+  document.getElementById('campo-title').textContent = 'Facturas pendientes';
+  document.getElementById('campo-subtitle').textContent = 'Labores e insumos sin factura, agrupados por prestador de servicio';
+  document.getElementById('campo-actions').classList.add('hidden');
+  document.getElementById('tabs-bar').classList.add('hidden');
+  document.getElementById('welcome-state').classList.add('hidden');
+  hideAllGlobalViews();
+  document.getElementById('tab-content-facturas').classList.remove('hidden');
+  renderFacturasPendientes();
+}
+
+function _buildPendingItems() {
+  const pending = db.registros.filter(r => !r.factura && CATS_FACTURABLES.includes(r.categoria));
+  const itemMap = {};
+  pending.forEach(r => {
+    const key = `${r.aplicacionId||r.id}||${r.contratista||''}||${r.inversor||''}`;
+    if (!itemMap[key]) {
+      const campo = getCampo(r.campoId);
+      itemMap[key] = {
+        aplicacionId: r.aplicacionId || r.id,
+        contratista: r.contratista || '(sin contratista)',
+        inversor: r.inversor || '(sin inversor)',
+        responsable: r.responsable || '',
+        campoNombre: campo ? `${campo.nombre} ${campo.campana||''}`.trim() : '?',
+        fecha: r.fecha,
+        ot: r.ot || '',
+        lotes: [],
+        insumos: [],
+        totalOriginal: 0,
+        superficie: 0,
+        ids: []
+      };
+    }
+    const it = itemMap[key];
+    if (!it.lotes.includes(r.loteName)) it.lotes.push(r.loteName);
+    if (!it.insumos.includes(r.insumo)) it.insumos.push(r.insumo);
+    it.totalOriginal += r.total || 0;
+    it.superficie += r.superficie || 0;
+    it.ids.push(r.id);
+  });
+  return Object.values(itemMap);
+}
+
+function renderFacturasPendientes() {
+  // Construir todos los items y llenar el selector de inversores
+  _pendingItems = _buildPendingItems();
+  const allInversores = [...new Set(_pendingItems.map(i => i.inversor))].sort();
+
+  const sel = document.getElementById('facturas-inv-filter');
+  if (sel) {
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">— Todos los inversores —</option>' +
+      allInversores.map(inv => `<option value="${esc(inv)}"${inv===prev?' selected':''}>${esc(inv)}</option>`).join('');
+    if (prev && allInversores.includes(prev)) sel.value = prev;
+  }
+
+  // Filtrar según selector
+  const filtroInv = sel ? sel.value : '';
+  const items = filtroInv
+    ? _pendingItems.filter(i => i.inversor === filtroInv)
+    : _pendingItems;
+
+  // Re-indexar para que los _idx correspondan con items filtrados
+  items.forEach((it, idx) => { it._idx = idx; });
+  _filteredItems = items;
+
+  // Agrupar por contratista → inversor
+  const byContr = {};
+  items.forEach(it => {
+    if (!byContr[it.contratista]) byContr[it.contratista] = {};
+    if (!byContr[it.contratista][it.inversor]) byContr[it.contratista][it.inversor] = [];
+    byContr[it.contratista][it.inversor].push(it);
+  });
+
+  const totalPend = items.reduce((s, it) => s + it.totalOriginal, 0);
+  document.getElementById('facturas-total-pendiente').textContent = `$${totalPend.toFixed(2)}`;
+  document.getElementById('facturas-count-pendiente').textContent =
+    `${items.length} item${items.length!==1?'s':''} pendiente${items.length!==1?'s':''}` +
+    (filtroInv ? ` · ${esc(filtroInv)}` : '');
+
+  const body = document.getElementById('facturas-body');
+
+  if (!items.length) {
+    body.innerHTML = `<div class="text-center py-20 text-gray-400">
+      <div class="text-5xl mb-4">${filtroInv ? '🔍' : '✅'}</div>
+      <p class="font-semibold text-lg text-gray-600">${filtroInv ? 'Sin pendientes para este inversor' : 'Todo al día'}</p>
+      <p class="text-sm mt-2">${filtroInv ? 'No hay facturas pendientes para '+esc(filtroInv) : 'No hay labores ni insumos sin factura asignada'}</p>
+    </div>`;
+    return;
+  }
+
+  let html = '';
+  Object.keys(byContr).sort().forEach(contr => {
+    const byInv = byContr[contr];
+    const allItems = Object.values(byInv).flat();
+    const subContr = allItems.reduce((s,i) => s + i.totalOriginal, 0);
+    const nItems = allItems.length;
+
+    html += `
+    <div class="mb-6 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+      <!-- Header contratista -->
+      <div class="flex items-center justify-between px-4 py-3 bg-green-950 text-white">
+        <div class="flex items-center gap-3">
+          <span class="text-lg">👤</span>
+          <span class="font-bold text-base">${esc(contr)}</span>
+          <span class="bg-green-800 text-green-300 text-xs px-2 py-0.5 rounded-full">${nItems} pendiente${nItems!==1?'s':''}</span>
+        </div>
+        <span class="font-bold text-orange-300 text-base">$${subContr.toFixed(2)}</span>
+      </div>`;
+
+    Object.keys(byInv).sort().forEach(inv => {
+      const invItems = byInv[inv].sort((a,b) => a.fecha.localeCompare(b.fecha));
+      const subInv = invItems.reduce((s,i) => s + i.totalOriginal, 0);
+
+      html += `
+      <!-- Sub-header inversor -->
+      <div class="flex items-center justify-between px-4 py-2 bg-slate-100 border-t border-gray-200">
+        <div class="flex items-center gap-2">
+          <span class="text-slate-400 text-xs">▸</span>
+          <span class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Inversor:</span>
+          <span class="text-sm font-bold text-slate-700">${esc(inv)}</span>
+          <span class="text-slate-400 text-xs">${invItems.length} item${invItems.length!==1?'s':''}</span>
+        </div>
+        <span class="text-sm font-semibold text-slate-600">$${subInv.toFixed(2)}</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Campo / Campaña</th>
+              <th>Lotes</th>
+              <th class="text-right">Has</th>
+              <th>Insumos / Trabajo</th>
+              <th>OT</th>
+              <th>Responsable</th>
+              <th class="text-right" style="min-width:130px">$ Total (editable)</th>
+              <th style="min-width:170px">Nro. Factura</th>
+              <th style="width:100px"></th>
+            </tr>
+          </thead>
+          <tbody>`;
+      invItems.forEach(it => {
+        html += `<tr>
+          <td class="whitespace-nowrap">${fmtDate(it.fecha)}</td>
+          <td class="font-medium whitespace-nowrap">${esc(it.campoNombre)}</td>
+          <td class="text-xs text-gray-600">${esc(it.lotes.join(', '))}</td>
+          <td class="text-right text-sm font-medium text-gray-700">${it.superficie > 0 ? it.superficie.toFixed(2) : '—'}</td>
+          <td class="text-xs text-gray-600">${esc(it.insumos.join(', '))}</td>
+          <td class="text-gray-500">${esc(it.ot)}</td>
+          <td>${it.responsable ? `<span class="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">👷 ${esc(it.responsable)}</span>` : '<span class="text-gray-300 text-xs">—</span>'}</td>
+          <td class="text-right">
+            <input type="number" step="0.01" value="${it.totalOriginal.toFixed(2)}"
+              id="fi-total-${it._idx}"
+              class="border border-gray-200 rounded-lg px-2 py-1.5 text-right text-sm w-28 focus:outline-none focus:ring-1 focus:ring-green-500">
+          </td>
+          <td>
+            <input type="text" placeholder="ej: 0001-00012345"
+              id="fi-num-${it._idx}"
+              onkeydown="if(event.key==='Enter') asignarFactura(${it._idx})"
+              class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-green-500">
+          </td>
+          <td>
+            <button onclick="asignarFactura(${it._idx})"
+              class="bg-green-700 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg w-full font-medium transition-colors">
+              ✓ Asignar
+            </button>
+          </td>
+        </tr>`;
+      });
+      html += `</tbody></table></div>`;
+    });
+
+    html += `</div>`;
+  });
+
+  body.innerHTML = html;
+}
+
+// Vista simplificada para colaborador
+function renderFacturasPendiendesColab() {
+  _pendingItems = _buildPendingItems();
+  _filteredItems = _pendingItems;
+  _filteredItems.forEach((it,i) => it._idx = i);
+
+  const total = _pendingItems.reduce((s,i)=>s+i.totalOriginal,0);
+  document.getElementById('facturas-total-pendiente').textContent = `$${total.toFixed(2)}`;
+  document.getElementById('facturas-count-pendiente').textContent =
+    `${_pendingItems.length} ítem${_pendingItems.length!==1?'s':''} pendiente${_pendingItems.length!==1?'s':''}`;
+
+  // En colaborador: bloquear botones de exportar/imprimir/filtro
+  const barra = document.querySelector('#tab-content-facturas .flex.items-center.gap-3');
+  if (barra) barra.classList.add('hidden');
+
+  renderFacturasPendientes();
+
+  // Bloquear todo excepto inputs de factura y botón asignar
+  document.querySelectorAll('#facturas-body button:not([onclick^="asignarFactura"])').forEach(b => {
+    b.disabled = true; b.classList.add('colab-lock');
+  });
+  document.querySelectorAll('#facturas-body input[id^="fi-total"]').forEach(i => {
+    i.readOnly = true; i.classList.add('colab-lock');
+  });
+}
+
+function asignarFactura(idx) {
+  const it = _filteredItems[idx];
+  if (!it) return;
+  const facturaNum = document.getElementById(`fi-num-${idx}`)?.value.trim();
+  if (!facturaNum) { alert('Ingresá el número de factura antes de asignar.'); return; }
+  const newTotal = parseFloat(document.getElementById(`fi-total-${idx}`)?.value);
+  const totalOriginal = it.totalOriginal;
+
+  // Actualizar registros
+  db.registros.forEach(r => {
+    if (it.ids.includes(r.id)) {
+      r.factura = facturaNum;
+      // Si el total fue modificado, redistribuir proporcionalmente
+      if (!isNaN(newTotal) && Math.abs(newTotal - totalOriginal) > 0.001 && totalOriginal > 0) {
+        const ratio = newTotal / totalOriginal;
+        r.total = round2((r.total || 0) * ratio);
+        r.precioUnitario = r.salidaReal > 0 ? round4(r.total / r.salidaReal) : r.precioUnitario;
+        r.usdha = r.superficie > 0 ? round2(r.total / r.superficie) : 0;
+      }
+    }
+  });
+
+  dbSave(db);
+  updateFacturasBadge();
+  renderFacturasPendientes();
+}
+
+// ─── EXPORTAR / IMPRIMIR FACTURAS ────────────────────────────────────
+function exportarFacturasExcel() {
+  if (typeof XLSX === 'undefined') { alert('La librería Excel no está disponible. Verificá tu conexión.'); return; }
+  const filtroInv = document.getElementById('facturas-inv-filter')?.value || '';
+  const items = filtroInv ? _pendingItems.filter(i => i.inversor === filtroInv) : _pendingItems;
+  if (!items.length) { alert('No hay ítems para exportar.'); return; }
+
+  const orgs = orgsLoad() || [];
+  const orgNombre = orgs.find(o => o.id === st.orgId)?.nombre || 'TA-Agrowillem';
+  const wb = XLSX.utils.book_new();
+
+  // Agrupar por inversor para crear una hoja por inversor
+  const porInversor = {};
+  items.forEach(it => {
+    if (!porInversor[it.inversor]) porInversor[it.inversor] = {};
+    if (!porInversor[it.inversor][it.contratista]) porInversor[it.inversor][it.contratista] = [];
+    porInversor[it.inversor][it.contratista].push(it);
+  });
+
+  Object.entries(porInversor).sort(([a],[b])=>a.localeCompare(b)).forEach(([inv, byContr]) => {
+    const rows = [
+      [`Facturas pendientes — ${inv}`],
+      [`Organización: ${orgNombre}`, '', `Fecha: ${new Date().toLocaleDateString('es-AR')}`],
+      [],
+      ['Prestador', 'Fecha', 'Campo / Campaña', 'Lotes', 'Has', 'Insumos / Trabajo', 'OT', 'Responsable', 'Total ($)']
+    ];
+    let total = 0;
+    Object.entries(byContr).sort(([a],[b])=>a.localeCompare(b)).forEach(([contr, its]) => {
+      its.sort((a,b)=>a.fecha.localeCompare(b.fecha)).forEach(it => {
+        rows.push([
+          contr, fmtDate(it.fecha), it.campoNombre,
+          it.lotes.join(', '), it.superficie || 0, it.insumos.join(', '),
+          it.ot, it.responsable, it.totalOriginal
+        ]);
+        total += it.totalOriginal;
+      });
+      const sub = its.reduce((s,i)=>s+i.totalOriginal,0);
+      rows.push(['', '', '', '', '', '', `Subtotal ${contr}:`, sub]);
+      rows.push([]);
+    });
+    rows.push(['', '', '', '', '', '', 'TOTAL INVERSOR:', total]);
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [16,12,22,20,30,10,14,12].map(w=>({wch:w}));
+    // Estilo título
+    if (ws['A1']) ws['A1'].s = { font: { bold: true, sz: 13 } };
+    const sheetName = inv.replace(/[\\\/\?\*\[\]]/g,'').slice(0,31);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Inversor');
+  });
+
+  // Hoja resumen si hay más de un inversor
+  if (Object.keys(porInversor).length > 1) {
+    const resRows = [
+      ['Resumen por inversor'],
+      [`${orgNombre} — Facturas pendientes — ${new Date().toLocaleDateString('es-AR')}`],
+      [],
+      ['Inversor', 'Cantidad de ítems', 'Total pendiente ($)']
+    ];
+    Object.entries(porInversor).sort(([a],[b])=>a.localeCompare(b)).forEach(([inv, byContr]) => {
+      const its = Object.values(byContr).flat();
+      resRows.push([inv, its.length, its.reduce((s,i)=>s+i.totalOriginal,0)]);
+    });
+    const wsRes = XLSX.utils.aoa_to_sheet(resRows);
+    wsRes['!cols'] = [{wch:30},{wch:18},{wch:20}];
+    XLSX.utils.book_append_sheet(wb, wsRes, 'Resumen');
+  }
+
+  const suffix = filtroInv ? `_${filtroInv.replace(/\s+/g,'_')}` : '_todos';
+  XLSX.writeFile(wb, `facturas_pendientes${suffix}.xlsx`);
+}
+
+function imprimirFacturas() {
+  const filtroInv = document.getElementById('facturas-inv-filter')?.value || '';
+  const items = filtroInv ? _pendingItems.filter(i => i.inversor === filtroInv) : _pendingItems;
+  if (!items.length) { alert('No hay ítems para imprimir.'); return; }
+
+  const orgs = orgsLoad() || [];
+  const orgNombre = orgs.find(o => o.id === st.orgId)?.nombre || 'TA-Agrowillem';
+  const titulo = filtroInv ? `Facturas pendientes · ${filtroInv}` : 'Facturas pendientes · Todos los inversores';
+  const total = items.reduce((s,i)=>s+i.totalOriginal,0);
+
+  // Agrupar por inversor → contratista
+  const porInversor = {};
+  items.forEach(it => {
+    if (!porInversor[it.inversor]) porInversor[it.inversor] = {};
+    if (!porInversor[it.inversor][it.contratista]) porInversor[it.inversor][it.contratista] = [];
+    porInversor[it.inversor][it.contratista].push(it);
+  });
+
+  let tablas = '';
+  Object.entries(porInversor).sort(([a],[b])=>a.localeCompare(b)).forEach(([inv, byContr]) => {
+    const invTotal = Object.values(byContr).flat().reduce((s,i)=>s+i.totalOriginal,0);
+    tablas += `<div class="inv-block">
+      <div class="inv-header">
+        <span>Inversor: <strong>${esc(inv)}</strong></span>
+        <span>Total: <strong>$${invTotal.toFixed(2)}</strong></span>
+      </div>`;
+    Object.entries(byContr).sort(([a],[b])=>a.localeCompare(b)).forEach(([contr, its]) => {
+      const sub = its.reduce((s,i)=>s+i.totalOriginal,0);
+      tablas += `<div class="contr-header"><span>👤 ${esc(contr)}</span><span>$${sub.toFixed(2)}</span></div>
+        <table><thead><tr>
+          <th>Fecha</th><th>Campo</th><th>Lotes</th><th class="num">Has</th><th>Trabajo / Insumos</th><th>OT</th><th>Responsable</th><th class="num">Total $</th>
+        </tr></thead><tbody>`;
+      its.sort((a,b)=>a.fecha.localeCompare(b.fecha)).forEach(it => {
+        tablas += `<tr>
+          <td>${fmtDate(it.fecha)}</td>
+          <td>${esc(it.campoNombre)}</td>
+          <td>${esc(it.lotes.join(', '))}</td>
+          <td class="num">${it.superficie > 0 ? it.superficie.toFixed(2) : '—'}</td>
+          <td>${esc(it.insumos.join(', '))}</td>
+          <td>${esc(it.ot)}</td>
+          <td>${esc(it.responsable)}</td>
+          <td class="num">$${it.totalOriginal.toFixed(2)}</td>
+        </tr>`;
+      });
+      tablas += `<tr class="subtotal"><td colspan="7">Subtotal ${esc(contr)}</td><td class="num">$${sub.toFixed(2)}</td></tr>`;
+      tablas += `</tbody></table>`;
+    });
+    tablas += `</div>`;
+  });
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+  <title>${titulo}</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }
+    h1 { font-size: 15px; margin: 0 0 2px; }
+    .meta { color: #555; font-size: 10px; margin-bottom: 16px; }
+    .inv-block { margin-bottom: 20px; break-inside: avoid; }
+    .inv-header { display: flex; justify-content: space-between; background: #14532d; color: white;
+      padding: 6px 10px; font-size: 12px; border-radius: 4px 4px 0 0; }
+    .contr-header { display: flex; justify-content: space-between; background: #f1f5f9;
+      padding: 4px 10px; font-size: 11px; font-weight: bold; border-bottom: 1px solid #cbd5e1; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+    th { background: #166534; color: white; padding: 5px 7px; text-align: left; font-size: 10px; }
+    td { padding: 4px 7px; border-bottom: 1px solid #e5e7eb; font-size: 10px; }
+    .num { text-align: right; }
+    .subtotal td { background: #f9fafb; font-weight: bold; border-top: 1px solid #9ca3af; }
+    .grand-total { text-align: right; font-size: 13px; font-weight: bold; margin-top: 12px;
+      padding: 8px 12px; background: #fff7ed; border: 1px solid #fdba74; border-radius: 6px; display: inline-block; float: right; }
+    @media print { body { margin: 10px; } }
+  </style></head><body>
+  <h1>${titulo}</h1>
+  <div class="meta">${orgNombre} · Generado: ${new Date().toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+  ${tablas}
+  <div class="grand-total">Total general pendiente: $${total.toFixed(2)}</div>
+  <script>window.onload=()=>{window.print();}<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
+// ─── CAMPO ───────────────────────────────────────────────────────────
+function selectCampo(id) {
+  st.campoId = id;
+  st.globalView = null;
+  hideAllGlobalViews();
+  const c = getCampo(id);
+  renderSidebar();
+  document.getElementById('campo-title').textContent = c.nombre;
+  document.getElementById('campo-subtitle').textContent =
+    `Campaña ${c.campana||'—'} · ${c.lotes.length} lote${c.lotes.length!==1?'s':''}`;
+  const act = document.getElementById('campo-actions');
+  act.classList.remove('hidden');
+  act.style.display = 'flex';
+  document.getElementById('tabs-bar').classList.remove('hidden');
+  setTab('registros');
+}
+
+function saveCampo() {
+  const nombre = document.getElementById('campo-nombre').value.trim();
+  const campana = document.getElementById('campo-campana').value.trim();
+  const inversor = document.getElementById('campo-inversor').value.trim();
+  const editId = document.getElementById('campo-edit-id').value;
+  if (!nombre) { alert('Ingresá el nombre del campo.'); return; }
+  if (!campana) { alert('Ingresá la campaña.'); return; }
+  if (editId) {
+    const c = getCampo(editId);
+    const oldCampana = c.campana;
+    c.nombre = nombre;
+    c.campana = campana;
+    c.inversor = inversor;
+    dbSave(db);
+    closeModal('modal-campo');
+    expandedCampanas.add(campana);
+    if (oldCampana !== campana) expandedCampanas.delete(oldCampana);
+    renderSidebar();
+    if (st.campoId === editId) {
+      document.getElementById('campo-title').textContent = nombre;
+      document.getElementById('campo-subtitle').textContent =
+        `Campaña ${campana} · ${c.lotes.length} lote${c.lotes.length!==1?'s':''}`;
+    }
+  } else {
+    const c = { id: uid(), nombre, campana, inversor, lotes: [] };
+    db.campos.push(c);
+    dbSave(db);
+    closeModal('modal-campo');
+    expandedCampanas.add(campana);
+    pendingCampana = '';
+    renderSidebar();
+    selectCampo(c.id);
+  }
+}
+
+// ─── TABS ─────────────────────────────────────────────────────────────
+function setTab(tab) {
+  st.tab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.remove('tab-active');
+    b.classList.add('border-transparent','text-gray-500');
+  });
+  const btn = document.getElementById(`tab-${tab}`);
+  btn.classList.add('tab-active');
+  btn.classList.remove('border-transparent','text-gray-500');
+  ['registros','dashboard','lotes'].forEach(t =>
+    document.getElementById(`tab-content-${t}`).classList.toggle('hidden', t!==tab));
+  if (tab==='registros') renderRegistros();
+  if (tab==='dashboard') renderDashboard();
+  if (tab==='lotes') renderLotes();
+}
+
+// ─── LOTES ───────────────────────────────────────────────────────────
+function openEditLote(loteId) {
+  const campo = getCampo(st.campoId);
+  const l = campo.lotes.find(x => x.id === loteId);
+  if (!l) return;
+  document.getElementById('lote-edit-id').value = loteId;
+  document.getElementById('lote-nombre').value = l.nombre;
+  document.getElementById('lote-sup').value = l.superficie;
+  document.getElementById('lote-cultivo').value = l.cultivo;
+  document.getElementById('lote-cultivo2').value = l.cultivo2 || '';
+  document.getElementById('lote-inversor').value = l.inversor || '';
+  document.getElementById('lote-modal-title').textContent = 'Editar lote';
+  openModal('modal-lote');
+}
+
+function openNuevoLote() {
+  document.getElementById('lote-edit-id').value = '';
+  document.getElementById('lote-nombre').value = '';
+  document.getElementById('lote-sup').value = '';
+  document.getElementById('lote-cultivo').value = '';
+  document.getElementById('lote-cultivo2').value = '';
+  document.getElementById('lote-inversor').value = '';
+  document.getElementById('lote-modal-title').textContent = 'Nuevo lote';
+  openModal('modal-lote');
+}
+
+function saveLote() {
+  const nombre = document.getElementById('lote-nombre').value.trim();
+  const sup = parseFloat(document.getElementById('lote-sup').value);
+  const cultivo = document.getElementById('lote-cultivo').value.trim();
+  const cultivo2 = document.getElementById('lote-cultivo2').value.trim();
+  const inversor = document.getElementById('lote-inversor').value.trim();
+  const editId = document.getElementById('lote-edit-id').value;
+  if (!nombre||!sup||!cultivo) { alert('Completá nombre, superficie y cultivo de primera.'); return; }
+  const campo = getCampo(st.campoId);
+  if (editId) {
+    const l = campo.lotes.find(x => x.id === editId);
+    l.nombre = nombre; l.superficie = sup; l.cultivo = cultivo;
+    l.cultivo2 = cultivo2 || null; l.inversor = inversor;
+    db.registros.filter(r => r.loteId === editId).forEach(r => {
+      r.loteName = nombre; r.superficie = sup;
+      r.salida = round4(sup * r.dosis);
+      r.usdha = sup > 0 ? round2(r.total / sup) : 0;
+    });
+  } else {
+    campo.lotes.push({ id: uid(), nombre, superficie: sup, cultivo, cultivo2: cultivo2||null, inversor });
+  }
+  dbSave(db);
+  closeModal('modal-lote');
+  document.getElementById('campo-subtitle').textContent =
+    `Campaña ${campo.campana||'—'} · ${campo.lotes.length} lote${campo.lotes.length!==1?'s':''}`;
+  if (st.tab==='lotes') renderLotes();
+  if (st.tab==='registros') renderRegistros();
+}
+
+function deleteLote(loteId) {
+  const campo = getCampo(st.campoId);
+  const l = campo.lotes.find(x => x.id === loteId);
+  const nRegs = db.registros.filter(r => r.loteId === loteId).length;
+  if (!confirm(`¿Eliminar "${l?.nombre}"? Se eliminarán ${nRegs} registro(s).`)) return;
+  campo.lotes = campo.lotes.filter(x => x.id !== loteId);
+  db.registros = db.registros.filter(r => r.loteId !== loteId);
+  dbSave(db);
+  document.getElementById('campo-subtitle').textContent =
+    `Campaña ${campo.campana||'—'} · ${campo.lotes.length} lote${campo.lotes.length!==1?'s':''}`;
+  renderLotes();
+}
+
+function renderLotes() {
+  const campo = getCampo(st.campoId);
+  if (!campo) return;
+  const grid = document.getElementById('lotes-grid');
+  if (!campo.lotes.length) {
+    grid.innerHTML = '<p class="text-gray-400 col-span-3 text-center py-10 text-sm">No hay lotes configurados.</p>';
+    return;
+  }
+  grid.innerHTML = '';
+  campo.lotes.forEach(l => {
+    const regs = db.registros.filter(r => r.loteId===l.id);
+    const total = regs.reduce((s,r)=>s+r.total,0);
+    const usdHa = l.superficie>0 ? total/l.superficie : 0;
+    const div = document.createElement('div');
+    div.className = 'bg-white rounded-xl border border-gray-200 p-4';
+    div.innerHTML = `
+      <div class="flex justify-between items-start mb-3">
+        <div>
+          <h4 class="font-bold text-gray-800">${esc(l.nombre)}</h4>
+          <p class="text-sm text-gray-400">${esc(l.cultivo)}</p>
+        </div>
+        <div class="flex gap-1.5">
+          <button onclick="openEditLote('${l.id}')" class="text-xs text-blue-400 hover:text-blue-600 border border-blue-200 px-1.5 py-0.5 rounded">Editar</button>
+          <button onclick="deleteLote('${l.id}')" class="text-xs text-red-400 hover:text-red-600 border border-red-200 px-1.5 py-0.5 rounded">Eliminar</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-2 text-sm">
+        <div class="bg-slate-50 rounded-lg p-2.5"><p class="text-xs text-gray-400">Superficie</p><p class="font-bold">${l.superficie} ha</p></div>
+        <div class="bg-green-50 rounded-lg p-2.5"><p class="text-xs text-gray-400">Total USD</p><p class="font-bold text-green-700">$${total.toFixed(2)}</p></div>
+        <div class="bg-slate-50 rounded-lg p-2.5"><p class="text-xs text-gray-400">USD/ha</p><p class="font-bold">${l.superficie>0?'$'+usdHa.toFixed(2):'—'}</p></div>
+        <div class="bg-slate-50 rounded-lg p-2.5"><p class="text-xs text-gray-400">Registros</p><p class="font-bold">${regs.length}</p></div>
+      </div>`;
+    grid.appendChild(div);
+  });
+  const add = document.createElement('div');
+  add.className = 'border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center p-6 cursor-pointer hover:bg-gray-50';
+  add.innerHTML = '<p class="text-gray-400 text-sm">+ Nuevo lote</p>';
+  add.onclick = () => openNuevoLote();
+  grid.appendChild(add);
+}
+
+// ─── APLICACIÓN MODAL ────────────────────────────────────────────────
+function openAplicacion(aplicId = null) {
+  try {
+  const campo = getCampo(st.campoId);
+  if (!campo) {
+    alert('Seleccioná un campo del sidebar antes de agregar un registro.\n\n(campoId=' + st.campoId + ', campos cargados=' + db.campos.length + ')');
+    return;
+  }
+  if (!campo.lotes || !campo.lotes.length) { alert('El campo "' + campo.nombre + '" no tiene lotes. Usá "+ Lote" para agregar uno primero.'); return; }
+
+  aplicEditId = aplicId;
+  document.getElementById('aplic-title').textContent = aplicId ? 'Editar aplicación' : 'Nueva aplicación / registro';
+
+  // Autocomplete desde registros existentes
+  const regs = getReg(st.campoId);
+  document.getElementById('list-contratistas').innerHTML = uniq(regs.map(r=>r.contratista)).map(v=>`<option value="${esc(v)}">`).join('');
+  document.getElementById('list-insumos').innerHTML = uniq(regs.map(r=>r.insumo)).map(v=>`<option value="${esc(v)}">`).join('');
+  document.getElementById('list-inversores').innerHTML = uniq(regs.map(r=>r.inversor)).map(v=>`<option value="${esc(v)}">`).join('');
+  document.getElementById('list-ots').innerHTML = uniq(regs.map(r=>r.ot)).map(v=>`<option value="${esc(v)}">`).join('');
+  document.getElementById('list-responsables').innerHTML = uniq(db.registros.map(r=>r.responsable)).map(v=>`<option value="${esc(v)}">`).join('');
+  // Categorías: predefinidas + cualquier custom ya usada
+  // Registrar en custom store categorías ya usadas que no estén en CATS_BASE
+  uniq(db.registros.map(r=>r.categoria)).filter(c=>c&&!CATS_BASE.includes(c)).forEach(saveCatCustom);
+
+  // Checkboxes de lotes
+  const cont = document.getElementById('aplic-lotes-checks');
+  cont.innerHTML = '';
+  campo.lotes.forEach(l => {
+    const invEfectivo = l.inversor || campo.inversor || '';
+    const label = document.createElement('div');
+    label.className = 'lote-check-item';
+    const cultivoSel = l.cultivo2
+      ? `<select id="lote-cultivo-sel-${l.id}" class="lote-inv-input" style="width:120px" title="¿A cuál cultivo pertenece este trabajo?">
+           <option value="${esc(l.cultivo)}">${esc(l.cultivo)}</option>
+           <option value="${esc(l.cultivo2)}">${esc(l.cultivo2)}</option>
+         </select>`
+      : `<span class="text-gray-500 text-xs font-medium">${esc(l.cultivo)}</span>`;
+    label.innerHTML = `
+      <input type="checkbox" id="lch-${l.id}" value="${l.id}" onchange="onLoteCheck()" class="accent-green-700 w-3.5 h-3.5 cursor-pointer">
+      <label for="lch-${l.id}" class="font-medium cursor-pointer">${esc(l.nombre)}</label>
+      ${cultivoSel}
+      <input type="number" step="0.1" min="0.1" value="${l.superficie}"
+        id="lote-sup-${l.id}" class="lote-sup-input"
+        oninput="calcAllRows()" title="Ha efectivas para esta aplicación">
+      <span class="text-xs text-gray-400">ha</span>
+      <span class="lote-inv-label">Inv:</span>
+      <input type="text" value="${esc(invEfectivo)}"
+        id="lote-inv-${l.id}" class="lote-inv-input" list="list-inversores"
+        title="Inversor para este lote en esta aplicación"
+        placeholder="${campo.inversor ? esc(campo.inversor) : 'Inversor…'}">`;
+    cont.appendChild(label);
+  });
+
+  // Limpiar tabla de productos
+  document.getElementById('prod-rows').innerHTML = '';
+  rowSeq = 0;
+
+  if (aplicId) {
+    // Editar: cargar registros de esta aplicacion
+    const aplicRegs = regs.filter(r => r.aplicacionId === aplicId);
+    if (!aplicRegs.length) return;
+    const first = aplicRegs[0];
+
+    document.getElementById('aplic-fecha').value = first.fecha || today();
+    document.getElementById('aplic-ot').value = first.ot || '';
+
+    // Check los lotes usados y restaurar su inversor guardado
+    const loteIds = uniq(aplicRegs.map(r=>r.loteId));
+    cont.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      cb.checked = loteIds.includes(cb.value);
+    });
+    loteIds.forEach(lid => {
+      const r = aplicRegs.find(x => x.loteId === lid);
+      const el = document.getElementById(`lote-inv-${lid}`);
+      if (el && r) el.value = r.inversor || '';
+    });
+
+    // Productos únicos (un registro por lote → agrupamos por insumo+categoria+contratista)
+    const prods = [];
+    aplicRegs.forEach(r => {
+      const key = `${r.insumo}|${r.categoria}|${r.contratista}`;
+      if (!prods.find(p=>p._key===key)) prods.push({...r, _key:key});
+    });
+    prods.forEach(p => addProdRow({
+      contratista:p.contratista, categoria:p.categoria, responsable:p.responsable,
+      insumo:p.insumo, unidad:p.unidad, dosis:p.dosis, salidaReal:p.salidaReal,
+      remito:p.remito, factura:p.factura, precioUnitario:p.precioUnitario
+    }));
+  } else {
+    document.getElementById('aplic-fecha').value = today();
+    document.getElementById('aplic-ot').value = '';
+    addProdRow();
+  }
+
+  onLoteCheck();
+  openModal('modal-aplicacion');
+  } catch(e) { alert('Error en Aplicación/Registro: ' + e.message + '\n\nStack: ' + (e.stack||'').split('\n').slice(0,3).join('\n')); }
+}
+
+// ─── PRODUCT ROWS ─────────────────────────────────────────────────────
+function addProdRow(data = {}) {
+  const id = ++rowSeq;
+  const tbody = document.getElementById('prod-rows');
+  const tr = document.createElement('tr');
+  tr.id = `prow-${id}`;
+  tr.dataset.rowId = id;
+
+  tr.innerHTML = `
+    <td><input class="prod-input" id="pr${id}-contratista" type="text" list="list-contratistas" value="${esc(data.contratista||'')}"></td>
+    <td><div class="cat-wrap">
+      <select id="pr${id}-categoria">${buildCatOptions(data.categoria||'Labor')}</select>
+      <button type="button" class="cat-add-btn" title="Agregar categoría nueva" onclick="addCategoriaCustom(${id})">+</button>
+    </div></td>
+    <td><input class="prod-input" id="pr${id}-responsable" type="text" list="list-responsables" value="${esc(data.responsable||'')}" placeholder="Empleado…"></td>
+    <td><input class="prod-input" id="pr${id}-insumo" type="text" list="list-insumos" value="${esc(data.insumo||'')}"></td>
+    <td><input class="prod-input" id="pr${id}-unidad" type="text" list="list-unidades-p" value="${esc(data.unidad||'')}" style="min-width:60px"></td>
+    <td><input class="prod-input" id="pr${id}-dosis" type="number" step="0.0001" value="${data.dosis||''}" oninput="calcRow(${id})" style="min-width:65px"></td>
+    <td><input class="prod-input ro" id="pr${id}-salida" type="number" readonly style="min-width:70px;text-align:right"></td>
+    <td><input class="prod-input" id="pr${id}-salida-real" type="number" step="0.001" value="${data.salidaReal||''}" oninput="calcRow(${id})" style="min-width:70px;text-align:right"></td>
+    <td><input class="prod-input ro" id="pr${id}-dev" type="number" readonly style="min-width:60px;text-align:right"></td>
+    <td><input class="prod-input" id="pr${id}-remito" type="text" value="${esc(data.remito||'')}"></td>
+    <td><input class="prod-input" id="pr${id}-factura" type="text" value="${esc(data.factura||'')}"></td>
+    <td><input class="prod-input" id="pr${id}-precio" type="number" step="0.01" value="${data.precioUnitario||''}" oninput="calcRow(${id})" style="min-width:75px;text-align:right"></td>
+    <td><input class="prod-input ro" id="pr${id}-total" type="number" readonly style="min-width:75px;text-align:right;color:#15803d;font-weight:600"></td>
+    <td style="text-align:center">
+      <button onclick="removeProdRow(${id})" class="text-red-400 hover:text-red-600 text-base leading-none px-1" title="Eliminar">✕</button>
+    </td>`;
+  tbody.appendChild(tr);
+
+  // datalist unidades si no existe
+  if (!document.getElementById('list-unidades-p')) {
+    const dl = document.createElement('datalist');
+    dl.id = 'list-unidades-p';
+    ['Has','Kg','Lts','Tn','Unidades'].forEach(u => {
+      const o = document.createElement('option'); o.value = u; dl.appendChild(o);
+    });
+    document.body.appendChild(dl);
+  }
+
+  calcRow(id);
+}
+
+function removeProdRow(id) {
+  const row = document.getElementById(`prow-${id}`);
+  if (row) row.remove();
+  updateGrandTotal();
+}
+
+function getCheckedLotesAplic() {
+  const campo = getCampo(st.campoId);
+  const checked = [...document.querySelectorAll('#aplic-lotes-checks input[type=checkbox]:checked')].map(cb=>cb.value);
+  return campo.lotes.filter(l => checked.includes(l.id)).map(l => {
+    const supEl = document.getElementById(`lote-sup-${l.id}`);
+    const invEl = document.getElementById(`lote-inv-${l.id}`);
+    const cultivoSelEl = document.getElementById(`lote-cultivo-sel-${l.id}`);
+    const superficie = supEl ? (parseFloat(supEl.value) || l.superficie) : l.superficie;
+    const inversor = invEl ? invEl.value.trim() : (l.inversor || campo.inversor || '');
+    const cultivo = cultivoSelEl ? cultivoSelEl.value : l.cultivo;
+    return { ...l, superficie, inversor, cultivo };
+  });
+}
+
+function calcAllRows() {
+  [...document.getElementById('prod-rows').querySelectorAll('tr')].forEach(tr => {
+    calcRow(parseInt(tr.dataset.rowId));
+  });
+}
+
+function onLoteCheck() {
+  const lotes = getCheckedLotesAplic();
+  const multi = lotes.length > 1;
+  document.getElementById('aplic-multilote-info').classList.toggle('hidden', !multi);
+
+  // Recalcular todas las filas
+  const rows = [...document.getElementById('prod-rows').querySelectorAll('tr')];
+  rows.forEach(tr => calcRow(parseInt(tr.dataset.rowId)));
+
+  updateMultilotePreview();
+}
+
+function calcRow(id) {
+  const lotes = getCheckedLotesAplic();
+  const dosis = parseFloat(document.getElementById(`pr${id}-dosis`)?.value) || 0;
+  const precio = parseFloat(document.getElementById(`pr${id}-precio`)?.value) || 0;
+
+  const salidaEl = document.getElementById(`pr${id}-salida`);
+  const srEl = document.getElementById(`pr${id}-salida-real`);
+  const devEl = document.getElementById(`pr${id}-dev`);
+  const totalEl = document.getElementById(`pr${id}-total`);
+  if (!salidaEl) return;
+
+  // Suma de superficies efectivas de todos los lotes seleccionados
+  const supTotal = lotes.reduce((s, l) => s + l.superficie, 0);
+  const salida = round4(supTotal * dosis);
+
+  salidaEl.value = salida || '';
+  salidaEl.style.opacity = '1';
+  if (!srEl.dataset.edited || !srEl.value) srEl.value = salida || '';
+  const sr = parseFloat(srEl.value) || 0;
+  devEl.value = salida ? round4(salida - sr) : '';
+  totalEl.value = sr ? round2(sr * precio) : '';
+
+  updateGrandTotal();
+  updateMultilotePreview();
+}
+
+// mark salidaReal as manually edited
+document.addEventListener('input', e => {
+  if (e.target.id && e.target.id.includes('-salida-real')) e.target.dataset.edited = '1';
+});
+
+function getProdRows() {
+  return [...document.getElementById('prod-rows').querySelectorAll('tr')].map(tr => {
+    const id = parseInt(tr.dataset.rowId);
+    const g = k => document.getElementById(`pr${id}-${k}`)?.value || '';
+    const gn = k => parseFloat(g(k)) || 0;
+    return { id, contratista:g('contratista'), categoria:g('categoria'), responsable:g('responsable'),
+      insumo:g('insumo'), unidad:g('unidad'), dosis:gn('dosis'), salidaReal_input:gn('salida-real'),
+      remito:g('remito'), factura:g('factura'), precio:gn('precio') };
+  });
+}
+
+function updateGrandTotal() {
+  const lotes = getCheckedLotesAplic();
+  const prods = getProdRows();
+  let grand = 0;
+  prods.forEach(p => {
+    if (lotes.length === 1) {
+      const sr = p.salidaReal_input || round4(lotes[0].superficie * p.dosis);
+      grand += round2(sr * p.precio);
+    } else {
+      lotes.forEach(l => {
+        const salida = round4(l.superficie * p.dosis);
+        grand += round2(salida * p.precio);
+      });
+    }
+  });
+  document.getElementById('aplic-grand-total').textContent = `$${grand.toFixed(2)}`;
+  const nRegs = lotes.length * prods.length;
+  document.getElementById('aplic-records-count').textContent =
+    nRegs > 1 ? `${nRegs} registro${nRegs!==1?'s':''} a crear` : '';
+}
+
+function updateMultilotePreview() {
+  const lotes = getCheckedLotesAplic();
+  const preview = document.getElementById('aplic-multilote-preview');
+  const body = document.getElementById('aplic-preview-body');
+  if (lotes.length < 2) { preview.classList.add('hidden'); return; }
+  preview.classList.remove('hidden');
+  const prods = getProdRows();
+  body.innerHTML = lotes.map(l => {
+    const loteTot = prods.reduce((s,p)=>{
+      const salida = round4(l.superficie * p.dosis);
+      return s + round2(salida * p.precio);
+    }, 0);
+    return `<div class="bg-slate-50 border border-gray-200 rounded-lg px-3 py-2 text-xs">
+      <p class="font-semibold text-gray-700">${esc(l.nombre)}</p>
+      <p class="text-gray-400">${l.superficie}ha · ${esc(l.cultivo)}</p>
+      <p class="font-bold text-green-700 mt-1">$${loteTot.toFixed(2)}</p>
+    </div>`;
+  }).join('');
+}
+
+// ─── GUARDAR APLICACIÓN ───────────────────────────────────────────────
+function saveAplicacion() {
+  const lotes = getCheckedLotesAplic();
+  if (!lotes.length) { alert('Seleccioná al menos un lote.'); return; }
+  const prods = getProdRows();
+  if (!prods.length) { alert('Agregá al menos un producto.'); return; }
+
+  const fecha = document.getElementById('aplic-fecha').value;
+  const ot = document.getElementById('aplic-ot').value.trim();
+  const aplicacionId = aplicEditId || uid();
+
+  // Eliminar registros anteriores de esta aplicacion si editando
+  if (aplicEditId) {
+    db.registros = db.registros.filter(r => r.aplicacionId !== aplicEditId);
+  }
+
+  prods.forEach(p => {
+    lotes.forEach(l => {
+      const salida = round4(l.superficie * p.dosis);
+      const salidaReal = (lotes.length===1 && p.salidaReal_input) ? p.salidaReal_input : salida;
+      const devolucion = round4(salida - salidaReal);
+      const total = round2(salidaReal * p.precio);
+      db.registros.push({
+        id: uid(),
+        aplicacionId,
+        campoId: st.campoId,
+        loteId: l.id,
+        loteName: l.nombre,
+        fecha,
+        superficie: l.superficie,
+        cultivo: l.cultivo,
+        contratista: p.contratista,
+        categoria: p.categoria,
+        responsable: p.responsable,
+        insumo: p.insumo,
+        unidad: p.unidad,
+        dosis: p.dosis,
+        salida,
+        salidaReal,
+        devolucion,
+        remito: p.remito,
+        ot,
+        inversor: l.inversor,
+        factura: p.factura,
+        precioUnitario: p.precio,
+        total,
+        usdha: l.superficie > 0 ? round2(total / l.superficie) : 0,
+      });
+    });
+  });
+
+  dbSave(db);
+  closeModal('modal-aplicacion');
+  updateFacturasBadge();
+  renderRegistros();
+  if (st.tab==='lotes') renderLotes();
+}
+
+// ─── ELIMINAR APLICACIÓN / REGISTRO ──────────────────────────────────
+function deleteAplicacion(aplicId) {
+  const regs = db.registros.filter(r=>r.aplicacionId===aplicId);
+  const msg = regs.length > 1
+    ? `¿Eliminar esta aplicación y sus ${regs.length} registros?`
+    : '¿Eliminar este registro?';
+  if (!confirm(msg)) return;
+  db.registros = db.registros.filter(r => r.aplicacionId !== aplicId);
+  dbSave(db);
+  updateFacturasBadge();
+  renderRegistros();
+}
+
+// ─── RENDER TABLA REGISTROS ───────────────────────────────────────────
+function regRow(r, isDetail = false) {
+  const cls = isDetail ? 'aplic-detail-row' : '';
+  return `<tr class="${cls}" ${isDetail ? `data-aplic="${r.aplicacionId}"` : ''}>
+    <td>${fmtDate(r.fecha)}</td>
+    <td class="font-medium">${esc(r.loteName)}</td>
+    <td class="text-right">${r.superficie}</td>
+    <td>${esc(r.cultivo)}</td>
+    <td>${esc(r.contratista||'')}</td>
+    <td><span class="badge ${catColor(r.categoria)}">${esc(r.categoria)}</span></td>
+    <td class="font-medium">${esc(r.insumo)}</td>
+    <td>${esc(r.unidad)}</td>
+    <td class="text-right">${r.dosis}</td>
+    <td class="text-right">${r.salida}</td>
+    <td class="text-right">${r.salidaReal}</td>
+    <td class="text-right ${r.devolucion>0?'text-orange-600':''}">${r.devolucion||'—'}</td>
+    <td>${esc(r.remito||'')}</td>
+    <td>${esc(r.ot||'')}</td>
+    <td>${esc(r.inversor||'')}</td>
+    <td>${esc(r.factura||'')}</td>
+    <td class="text-right">$${r.precioUnitario.toFixed(2)}</td>
+    <td class="text-right font-semibold text-green-700">$${r.total.toFixed(2)}</td>
+    <td class="text-right text-gray-400">$${(r.usdha||0).toFixed(2)}</td>
+    <td>
+      <div class="flex gap-1 justify-end">
+        <button onclick="openAplicacion('${r.aplicacionId||r.id}')" title="Editar"
+          class="text-blue-400 hover:text-blue-600 text-xs px-1.5 py-0.5 border border-blue-200 rounded">✏</button>
+        <button onclick="deleteAplicacion('${r.aplicacionId||r.id}')" title="Eliminar"
+          class="text-red-400 hover:text-red-600 text-xs px-1.5 py-0.5 border border-red-200 rounded">✕</button>
+      </div>
+    </td>
+  </tr>`;
+}
+
+function renderRegistros() {
+  if (!st.campoId) return;
+  let regs = getReg(st.campoId);
+
+  const allLotes    = uniq(regs.map(r=>r.loteName)).sort();
+  const allCultivos = uniq(regs.map(r=>r.cultivo)).sort();
+  const allCats     = uniq(regs.map(r=>r.categoria)).sort();
+  rebuildSelect('filter-lote','Todos los lotes',allLotes);
+  rebuildSelect('filter-cultivo','Todos los cultivos',allCultivos);
+  rebuildSelect('filter-categoria','Todas las categorías',allCats);
+
+  const fL = document.getElementById('filter-lote').value;
+  const fC = document.getElementById('filter-cultivo').value;
+  const fK = document.getElementById('filter-categoria').value;
+  if (fL) regs = regs.filter(r=>r.loteName===fL);
+  if (fC) regs = regs.filter(r=>r.cultivo===fC);
+  if (fK) regs = regs.filter(r=>r.categoria===fK);
+
+  regs.sort((a,b) => a.fecha.localeCompare(b.fecha) || (a.aplicacionId||a.id).localeCompare(b.aplicacionId||b.id) || a.loteName.localeCompare(b.loteName));
+
+  const tbody = document.getElementById('registros-body');
+  document.getElementById('registros-empty').classList.toggle('hidden', regs.length>0);
+  document.getElementById('registros-footer').classList.toggle('hidden', regs.length===0);
+  if (!regs.length) { tbody.innerHTML=''; return; }
+
+  // Agrupar por aplicacionId
+  const groups = [];
+  const seen = new Set();
+  regs.forEach(r => {
+    const key = r.aplicacionId || r.id;
+    if (!seen.has(key)) {
+      seen.add(key);
+      const members = r.aplicacionId ? regs.filter(x => x.aplicacionId === r.aplicacionId) : [r];
+      groups.push({ key, members, isGroup: members.length > 1 });
+    }
+  });
+
+  let html = '';
+  groups.forEach(g => {
+    if (!g.isGroup) {
+      html += regRow(g.members[0], false);
+      return;
+    }
+
+    // Fila header del grupo
+    const lotes   = uniq(g.members.map(r=>r.loteName)).join(', ');
+    const cats    = uniq(g.members.map(r=>r.categoria)).join(', ');
+    const total   = g.members.reduce((s,r)=>s+r.total, 0);
+    const fecha   = fmtDate(g.members[0].fecha);
+    const ot      = g.members[0].ot || '';
+    const inv     = g.members[0].inversor || '';
+    const nProd   = uniq(g.members.map(r=>r.insumo)).length;
+    const open    = expandedGroups.has(g.key);
+
+    const supTotal  = uniq(g.members.map(r=>r.loteId)).reduce((s,lid) => {
+      const r = g.members.find(x=>x.loteId===lid); return s + (r?r.superficie:0);
+    }, 0);
+    const salTotal  = g.members.reduce((s,r)=>s+(r.salida||0),0);
+    const srTotal   = g.members.reduce((s,r)=>s+(r.salidaReal||0),0);
+    const devTotal  = g.members.reduce((s,r)=>s+(r.devolucion||0),0);
+    const usdhaGrp  = supTotal>0 ? round2(total/supTotal) : 0;
+    const conts     = uniq(g.members.map(r=>r.contratista)).join(', ');
+    const remitos   = uniq(g.members.map(r=>r.remito).filter(Boolean)).join(', ');
+
+    html += `<tr class="aplic-header-row" data-aplic-header="${g.key}" onclick="toggleGroup('${g.key}')">
+      <td><span class="grp-icon text-green-600 font-bold mr-1 select-none">${open?'▼':'▶'}</span>${fecha}</td>
+      <td class="font-medium">${esc(lotes)}</td>
+      <td class="text-right">${supTotal||''}</td>
+      <td>${esc(uniq(g.members.map(r=>r.cultivo)).join(', '))}</td>
+      <td>${esc(conts)}</td>
+      <td><span class="badge bg-green-100 text-green-700">${nProd} prod.</span></td>
+      <td class="font-medium text-gray-400 italic">${esc(cats)}</td>
+      <td></td>
+      <td></td>
+      <td class="text-right">${round4(salTotal)||''}</td>
+      <td class="text-right">${round4(srTotal)||''}</td>
+      <td class="text-right ${devTotal>0?'text-orange-600':''}">${devTotal?round4(devTotal):'—'}</td>
+      <td>${esc(remitos)}</td>
+      <td>${esc(ot)}</td>
+      <td>${esc(inv)}</td>
+      <td></td>
+      <td></td>
+      <td class="text-right font-semibold text-green-700">$${total.toFixed(2)}</td>
+      <td class="text-right text-gray-400">$${usdhaGrp.toFixed(2)}</td>
+      <td>
+        <div class="flex gap-1 justify-end" onclick="event.stopPropagation()">
+          <button onclick="openAplicacion('${g.key}')" class="text-blue-400 hover:text-blue-600 text-xs px-1.5 py-0.5 border border-blue-200 rounded bg-white">✏</button>
+          <button onclick="deleteAplicacion('${g.key}')" class="text-red-400 hover:text-red-600 text-xs px-1.5 py-0.5 border border-red-200 rounded bg-white">✕</button>
+        </div>
+      </td>
+    </tr>`;
+
+    // Filas detalle
+    g.members.forEach(r => {
+      html += `<tr class="aplic-detail-row${open?'':' hidden'}" data-aplic="${g.key}">
+        <td>${fmtDate(r.fecha)}</td>
+        <td class="font-medium">${esc(r.loteName)}</td>
+        <td class="text-right">${r.superficie}</td>
+        <td>${esc(r.cultivo)}</td>
+        <td>${esc(r.contratista||'')}</td>
+        <td><span class="badge ${catColor(r.categoria)}">${esc(r.categoria)}</span></td>
+        <td class="font-medium">${esc(r.insumo)}</td>
+        <td>${esc(r.unidad)}</td>
+        <td class="text-right">${r.dosis}</td>
+        <td class="text-right">${r.salida}</td>
+        <td class="text-right">${r.salidaReal}</td>
+        <td class="text-right ${r.devolucion>0?'text-orange-600':''}">${r.devolucion||'—'}</td>
+        <td>${esc(r.remito||'')}</td>
+        <td>${esc(r.ot||'')}</td>
+        <td>${esc(r.inversor||'')}</td>
+        <td>${esc(r.factura||'')}</td>
+        <td class="text-right">$${r.precioUnitario.toFixed(2)}</td>
+        <td class="text-right font-semibold text-green-700">$${r.total.toFixed(2)}</td>
+        <td class="text-right text-gray-400">$${(r.usdha||0).toFixed(2)}</td>
+        <td></td>
+      </tr>`;
+    });
+  });
+
+  tbody.innerHTML = html;
+  const total = regs.reduce((s,r)=>s+r.total,0);
+  document.getElementById('footer-count').textContent = `${regs.length} registro${regs.length!==1?'s':''}`;
+  document.getElementById('footer-total').textContent = `Total campo: USD $${total.toFixed(2)}`;
+}
+
+function rebuildSelect(id, def, opts) {
+  const el = document.getElementById(id);
+  const cur = el.value;
+  el.innerHTML = `<option value="">${def}</option>` +
+    opts.map(o=>`<option value="${esc(o)}"${o===cur?' selected':''}>${esc(o)}</option>`).join('');
+}
+
+function clearFilters() {
+  ['filter-lote','filter-cultivo','filter-categoria'].forEach(id=>document.getElementById(id).value='');
+  renderRegistros();
+}
+
+// ─── DASHBOARD ────────────────────────────────────────────────────────
+function renderDashboard() {
+  const campo = getCampo(st.campoId);
+  if (!campo) return;
+  const regs = getReg(st.campoId);
+  const totalUSD = regs.reduce((s,r)=>s+r.total,0);
+  const totalHa = campo.lotes.reduce((s,l)=>s+l.superficie,0);
+
+  document.getElementById('kpi-cards').innerHTML = [
+    {label:'Total USD',val:`$${totalUSD.toFixed(0)}`,sub:'costo acumulado'},
+    {label:'USD / ha',val:totalHa>0?`$${(totalUSD/totalHa).toFixed(1)}`:'—',sub:'promedio campo'},
+    {label:'Superficie',val:`${totalHa} ha`,sub:`${campo.lotes.length} lotes`},
+    {label:'Registros',val:regs.length,sub:'labores e insumos'},
+  ].map(k=>`<div class="bg-white rounded-xl border border-gray-200 p-4">
+    <p class="text-xs text-gray-400 mb-1">${k.label}</p>
+    <p class="text-2xl font-bold text-gray-800">${k.val}</p>
+    <p class="text-xs text-gray-400 mt-1">${k.sub}</p></div>`).join('');
+
+  const byCultivo = groupSum(regs,'cultivo','total');
+  const hasCultivo = {};
+  campo.lotes.forEach(l => hasCultivo[l.cultivo]=(hasCultivo[l.cultivo]||0)+l.superficie);
+  const cLabels = Object.keys(byCultivo);
+  renderBar('chart-cultivo',cLabels,cLabels.map(c=>hasCultivo[c]>0?round2(byCultivo[c]/hasCultivo[c]):0),'USD/ha','#16a34a');
+
+  const byCat = groupSum(regs,'categoria','total');
+  const catLabels = Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]);
+  renderDoughnut('chart-categoria',catLabels,catLabels.map(c=>round2(byCat[c])));
+
+  const byIns = groupSum(regs,'insumo','total');
+  const top = Object.entries(byIns).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const maxV = top[0]?.[1]||1;
+  document.getElementById('top-insumos').innerHTML = top.map(([n,v])=>`
+    <div class="flex items-center gap-3 mb-2">
+      <div class="w-36 text-xs text-gray-700 truncate">${esc(n)}</div>
+      <div class="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+        <div class="bg-green-600 h-3 rounded-full" style="width:${(v/maxV*100).toFixed(1)}%"></div>
+      </div>
+      <div class="text-xs font-semibold text-gray-700 w-16 text-right">$${v.toFixed(0)}</div>
+    </div>`).join('');
+
+  const byLote = groupSum(regs,'loteName','total');
+  const lLabels = Object.keys(byLote).sort();
+  const lData = lLabels.map(ln=>{
+    const l = campo.lotes.find(x=>x.nombre===ln);
+    return l&&l.superficie>0 ? round2(byLote[ln]/l.superficie) : 0;
+  });
+  renderBar('chart-lotes',lLabels,lData,'USD/ha','#2563eb');
+}
+
+function groupSum(arr,key,val) {
+  return arr.reduce((acc,r)=>{ const k=r[key]||'?'; acc[k]=(acc[k]||0)+(r[val]||0); return acc; },{});
+}
+function renderBar(id,labels,data,label,color) {
+  destroyChart(id);
+  st.charts[id] = new Chart(document.getElementById(id),{
+    type:'bar', data:{labels,datasets:[{label,data,backgroundColor:color,borderRadius:5}]},
+    options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{font:{size:11}}},x:{ticks:{font:{size:11}}}},responsive:true}
+  });
+}
+function renderDoughnut(id,labels,data) {
+  destroyChart(id);
+  const colors=['#16a34a','#2563eb','#d97706','#dc2626','#7c3aed','#0891b2','#65a30d','#c2410c','#0f766e'];
+  st.charts[id] = new Chart(document.getElementById(id),{
+    type:'doughnut', data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:1}]},
+    options:{plugins:{legend:{position:'right',labels:{font:{size:11},boxWidth:12}}},responsive:true}
+  });
+}
+function destroyChart(id) { if(st.charts[id]){st.charts[id].destroy();delete st.charts[id];} }
+
+// ─── EXPORTAR EXCEL ───────────────────────────────────────────────────
+function exportarExcel() {
+  const campo = getCampo(st.campoId);
+  if (!campo) return;
+  const regs = getReg(st.campoId);
+  if (!regs.length) { alert('No hay registros para exportar.'); return; }
+
+  if (typeof XLSX === 'undefined') {
+    alert('La librería de Excel no está disponible.\nVerificá tu conexión a internet y recargá la página.');
+    return;
+  }
+
+  try {
+    regs.sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.loteName.localeCompare(b.loteName));
+
+    const wb = XLSX.utils.book_new();
+
+    const headers = ['Fecha','Lote','Superficie','Cultivo','Contratista','Categoria',
+      'Insumo/Trabajo','Unidad','Dosis','Salida','Salida real','Devolucion',
+      'Remito','OT','Inversor','Factura','$ unitario (USD)','$ total','USD/HA'];
+
+    const rows = regs.map(r=>[
+      fmtDate(r.fecha), r.loteName, r.superficie, r.cultivo,
+      r.contratista||'', r.categoria, r.insumo||'', r.unidad||'', r.dosis||0,
+      r.salida||0, r.salidaReal||0, r.devolucion||0,
+      r.remito||'', r.ot||'', r.inversor||'', r.factura||'',
+      r.precioUnitario||0, r.total||0, r.usdha||0
+    ]);
+
+    const ws1 = XLSX.utils.aoa_to_sheet([headers,...rows]);
+    ws1['!cols']=[{wch:12},{wch:14},{wch:10},{wch:16},{wch:16},{wch:14},
+      {wch:22},{wch:8},{wch:8},{wch:10},{wch:10},{wch:10},
+      {wch:14},{wch:8},{wch:16},{wch:14},{wch:16},{wch:12},{wch:10}];
+    const shName = `${campo.nombre} ${campo.campana||''}`.trim()
+      .replace(/[:\\\/\?\*\[\]]/g,'-').slice(0,31);
+    XLSX.utils.book_append_sheet(wb, ws1, shName);
+
+    // Costos por lote
+    const costos = [['Lote','Categoria','Suma de $ total','USD/HA']];
+    const loteMap = {};
+    regs.forEach(r=>{
+      if(!loteMap[r.loteId]) loteMap[r.loteId]={nombre:r.loteName,superficie:r.superficie,cats:{}};
+      loteMap[r.loteId].cats[r.categoria]=(loteMap[r.loteId].cats[r.categoria]||0)+(r.total||0);
+    });
+    Object.values(loteMap).sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(lote=>{
+      let tot=0;
+      Object.entries(lote.cats).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([cat,val])=>{
+        costos.push([lote.nombre, cat, round4(val), lote.superficie>0?round4(val/lote.superficie):0]);
+        tot+=val;
+      });
+      costos.push([`Total ${lote.nombre}`,'',round4(tot),lote.superficie>0?round4(tot/lote.superficie):0]);
+      costos.push(['','','','']);
+    });
+    const ws2 = XLSX.utils.aoa_to_sheet(costos);
+    ws2['!cols']=[{wch:22},{wch:16},{wch:18},{wch:12}];
+    XLSX.utils.book_append_sheet(wb,ws2,'Costos por lote');
+
+    const fn = `${campo.nombre} ${campo.campana||''}`.trim()
+      .replace(/[/\\:*?<>|]/g,'-') + '.xlsx';
+    XLSX.writeFile(wb, fn);
+  } catch(e) {
+    alert('Error al exportar: ' + e.message);
+    console.error('Export error:', e);
+  }
+}
+
+// ─── EXPORTAR PLAN DE SIEMBRA ────────────────────────────────────────
+function exportarPlanSiembra() {
+  if (typeof XLSX === 'undefined') {
+    alert('La librería de Excel no está disponible.\nVerificá tu conexión a internet y recargá la página.');
+    return;
+  }
+  if (!db.campos.length) { alert('No hay datos para exportar.'); return; }
+
+  try {
+    const { byInv, allLotes, totalHa, totalLotes, camposFiltrados } = _buildPlanData();
+    const orgs = orgsLoad() || [];
+    const orgNombre = orgs.find(o => o.id === st.orgId)?.nombre || 'Plan';
+    const wb = XLSX.utils.book_new();
+
+    // ── Hoja 1: Todos los lotes ──────────────────────────────────────
+    const h1 = ['Campo','Campana','Inversor','Lote','Cultivo 1','Cultivo 2','Superficie (ha)'];
+    const r1 = [];
+    camposFiltrados.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(campo => {
+      campo.lotes.sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(lote => {
+        const inv = lote.inversor || campo.inversor || '';
+        r1.push([
+          campo.nombre, campo.campana||'', inv,
+          lote.nombre, lote.cultivo||'', lote.cultivo2||'',
+          lote.superficie||0
+        ]);
+      });
+      // Fila de subtotal por campo
+      const haC = campo.lotes.reduce((s,l)=>s+(l.superficie||0),0);
+      r1.push(['', '', '', `Subtotal ${campo.nombre}`, '', '', haC]);
+      r1.push(['','','','','','','']); // separador
+    });
+    // Fila total
+    r1.push(['','','','TOTAL GENERAL','','',totalHa]);
+
+    const ws1 = XLSX.utils.aoa_to_sheet([h1, ...r1]);
+    ws1['!cols'] = [{wch:18},{wch:12},{wch:18},{wch:14},{wch:16},{wch:16},{wch:14}];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Todos los lotes');
+
+    // ── Hoja 2: Resumen por cultivo ──────────────────────────────────
+    const byCultivo = {};
+    allLotes.forEach(({ lote, campoNombre }) => {
+      const s = lote.superficie || 0;
+      const addC = (c) => {
+        if (!byCultivo[c]) byCultivo[c] = { ha: 0, lotes: 0, campos: new Set() };
+        byCultivo[c].ha += s;
+        byCultivo[c].lotes++;
+        byCultivo[c].campos.add(campoNombre);
+      };
+      addC(lote.cultivo || '(sin cultivo)');
+      if (lote.cultivo2) addC(lote.cultivo2);
+    });
+    const h2 = ['Cultivo','Lotes','Ha totales','% del plan','Campos'];
+    const r2 = Object.entries(byCultivo).sort((a,b)=>b[1].ha-a[1].ha).map(([c,v]) => [
+      c, v.lotes, round2(v.ha),
+      totalHa > 0 ? round2(v.ha/totalHa*100) : 0,
+      [...v.campos].join(', ')
+    ]);
+    r2.push(['', '', round2(totalHa), 100, '']);
+    const ws2 = XLSX.utils.aoa_to_sheet([h2, ...r2]);
+    ws2['!cols'] = [{wch:18},{wch:8},{wch:14},{wch:12},{wch:40}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Por cultivo');
+
+    // ── Hoja 3: Resumen por inversor ─────────────────────────────────
+    const h3 = ['Inversor','Campo','Campana','Lote','Cultivo 1','Cultivo 2','Ha'];
+    const r3 = [];
+    Object.keys(byInv).sort().forEach(inv => {
+      byInv[inv].sort((a,b)=>a.campoNombre.localeCompare(b.campoNombre)).forEach(entry => {
+        entry.lotes.sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(lote => {
+          r3.push([inv, entry.campoNombre, entry.campana, lote.nombre,
+            lote.cultivo||'', lote.cultivo2||'', lote.superficie||0]);
+        });
+        const haE = entry.lotes.reduce((s,l)=>s+(l.superficie||0),0);
+        r3.push(['', `Subtotal ${entry.campoNombre}`, '','','','', haE]);
+      });
+      const haInv = byInv[inv].reduce((s,e)=>s+e.lotes.reduce((ss,l)=>ss+(l.superficie||0),0),0);
+      r3.push([`Total ${inv}`, '','','','','', haInv]);
+      r3.push(['','','','','','','']);
+    });
+    const ws3 = XLSX.utils.aoa_to_sheet([h3, ...r3]);
+    ws3['!cols'] = [{wch:18},{wch:18},{wch:12},{wch:14},{wch:16},{wch:16},{wch:10}];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Por inversor');
+
+    const fn = `Plan de Siembra - ${orgNombre}.xlsx`.replace(/[:\\\/\?\*\[\]]/g,'-');
+    XLSX.writeFile(wb, fn);
+  } catch(e) {
+    alert('Error al exportar: ' + e.message);
+    console.error(e);
+  }
+}
+
+// ─── CARGADOR HISTORIAL TA-AGROWILLEM ────────────────────────────────
+function cargarHistorialTA() {
+  if (!confirm('¿Cargar el historial de campañas 2022/23 a 2026/27 del Excel?\n\nSi ya lo cargaste antes, los duplicados se omiten automáticamente.')) return;
+
+  const ROWS = [
+    ["BAYA CAZAL",            "1",          11,    null,               null,               "Cebada/Soja 2da",  "Girasol",          "Trigo/Soja 2da"   ],
+    ["CAMPO ERREGUERENA",     null,          58,    "Girasol",          "Cebada/Soja 2da",  "Maíz",             "Girasol",          "Cebada/Soja 2da"  ],
+    ["CAMPO GIMENEZ",         null,          68,    "Maíz",             "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Trigo/Soja 2da"   ],
+    ["DON MARTIN",            null,          30,    "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da"  ],
+    ["CAMPO STORTI",          null,          41,    "Girasol",          "Cebada/Soja 2da",  "Soja",             "Soja",             null               ],
+    ["EL PERDIDO",            "D",           25,    "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Girasol"          ],
+    ["EL PERDIDO",            "B",           16,    "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Girasol"          ],
+    ["LA GUITARRITA",         null,         150,    "Maíz",             "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Trigo/Soja 2da"   ],
+    ["LA SOÑADA",             null,          72,    "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Maíz",             "Girasol",          "Cebada/Soja 2da"  ],
+    ["LAS BLANCAS",           "1",           25,    "Girasol",          "Trigo/Soja 2da",   "Maíz",             "Soja",             "Girasol"          ],
+    ["LAS BLANCAS",           "2",           23,    "Maíz",             "Soja",             "Trigo/Soja 2da",   "Maíz",             "Girasol"          ],
+    ["LAS BLANCAS",           "3",           41,    "Pastura",          "Pastura",          "Maíz",             "Maíz",             "Maíz"             ],
+    ["LAS BLANCAS",           "4",           65,    "Maíz",             "Girasol",          "Trigo/Soja 2da",   "Maíz",             "Girasol"          ],
+    ["LAS BLANCAS",           "5",           28,    "Cebada/Soja 2da",  "Maíz",             "Soja",             "Maíz",             "Girasol"          ],
+    ["LAS BLANCAS",           "5b",          22,    null,               null,               null,               "Girasol",          "Girasol"          ],
+    ["LAS BLANCAS",           "6",           65,    "Girasol",          "Maíz",             "Girasol",          "Trigo/Soja 2da",   "Maíz"             ],
+    ["LAS BLANCAS",           "7-8-9",       88,    "Cebada/Soja 2da",  "Maíz",             "Girasol",          "Trigo/Soja 2da",   "Maíz"             ],
+    ["LAS BLANCAS",           "7-8-9b",      20,    "Cebada/Soja 2da",  "Maíz",             "Papa",             "Maíz",             "Girasol"          ],
+    ["LAS BLANCAS",           "10",          66,    "Maíz",             "Maíz",             "Papa",             "Maíz",             "Girasol"          ],
+    ["LAS BLANCAS",           "11",          97,    "Cebada/Soja 2da",  "Maíz",             "Maíz",             "Girasol",          "Trigo/Soja 2da"   ],
+    ["LAS BLANCAS",           "11b",         13,    null,               null,               "Papa",             "Girasol",          "Trigo/Soja 2da"   ],
+    ["LAS BLANCAS",           "12",          16,    "Girasol",          "Trigo/Soja 2da",   "Maíz",             "Soja",             "Girasol"          ],
+    ["LAS BLANCAS",           "13",          57,    "Soja",             "Soja DM 46I20",    "Soja",             "Trigo/Soja 2da",   "Maíz"             ],
+    ["LAS BLANCAS",           "14",          11,    "Cebada/Soja 2da",  "Girasol",          "Trigo/Soja 2da",   "Maíz",             "Girasol"          ],
+    ["LAS BLANCAS",           "15",          26,    "Girasol",          "Trigo/Soja 2da",   "Maíz",             "Soja",             "Girasol"          ],
+    ["LAS BLANCAS",           "16",          53,    "Maíz",             "Soja",             "Trigo/Soja 2da",   "Maíz",             "Maíz"             ],
+    ["LAS LONJAS",            "1",           86,    "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Maíz",             "Girasol"          ],
+    ["LAS LONJAS",            "2",          101,    "Maíz",             "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da"  ],
+    ["LAS LONJAS",            "3",           93,    "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da"  ],
+    ["LAS LONJAS",            "4",          104,    "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Maíz",             "Girasol",          "Cebada/Soja 2da"  ],
+    ["LAS LONJAS",            "5-7",        182,    "Cebada/Soja 2da",  "Maíz",             "Girasol",          "Cebada/Soja 2da",  "Maíz"             ],
+    ["LAS LONJAS",            "6A",          12,    "Girasol",          "Maíz",             "Maíz",             "Girasol",          "Cebada/Soja 2da"  ],
+    ["LAS LONJAS",            "6B",          56,    "Girasol",          "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Maíz",             "Girasol"          ],
+    ["LAS LONJAS",            "8",           92,    "Cebada/Soja 2da",  "Maíz",             "Girasol",          "Cebada/Soja 2da",  "Girasol"          ],
+    ["LIDIA O VILLAR",        "1",           39,    null,               "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Girasol"          ],
+    ["SAYA O ESC. 9",         null,          32,    "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Trigo/Soja 2da"   ],
+    ["TOKI EDER",             "1",           47,    "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Maíz",             "Girasol"          ],
+    ["TOKI EDER",             "2",           50,    "Girasol",          "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Girasol",          "Trigo/Soja 2da"   ],
+    ["TOKI EDER",             "3",           45,    "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Maíz",             "Girasol"          ],
+    ["TOKI EDER",             "4",           49,    "Girasol",          "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Girasol",          "Trigo/Soja 2da"   ],
+    ["TOKI EDER",             "5",           28,    "Girasol",          "Cebada/Soja 2da",  "Maíz",             "Girasol",          "Trigo/Soja 2da"   ],
+    ["TOKI EDER",             "6",           55,    "Girasol",          "Cebada/Soja 2da",  "Maíz",             "Girasol",          "Trigo/Soja 2da"   ],
+    ["TOKI EDER",             "7",            9,    "Cebada/Soja 2da",  "Maíz",             "Maíz",             "Girasol",          "Trigo/Soja 2da"   ],
+    ["TOKI EDER",             "7b",          33,    "Girasol",          null,               "Girasol",          "Cebada/Soja 2da",  "Girasol"          ],
+    ["TOKI EDER",             "8",           35,    "Cebada/Soja 2da",  "Maíz",             "Girasol",          "Cebada/Soja 2da",  "Maíz"             ],
+    ["TOKI EDER",             "9",           36,    "Cebada/Soja 2da",  "Maíz",             "Soja",             "Cebada/Soja 2da",  "Maíz"             ],
+    ["TOKI EDER",             "10",          27,    "Cebada/Soja 2da",  "Maíz",             "Soja",             "Cebada/Soja 2da",  "Maíz"             ],
+    ["TOKI EDER",             "11",          26,    null,               null,               null,               "Girasol",          "Trigo/Soja 2da"   ],
+    ["TOKI EDER",             "12",          30,    "Cebada/Soja 2da",  "Maíz",             "Soja",             "Cebada/Soja 2da",  "Girasol"          ],
+    ["BARON",                 "1",          100,    "Cebada/Soja 2da",  "Maíz",             "Girasol",          "Cebada/Soja 2da",  "Girasol"          ],
+    ["EL OREJANO",            "1",         44.9,    "Maíz",             "Maíz",             "Soja",             "Cebada/Soja 2da",  null               ],
+    ["EL OREJANO",            "2",         13.6,    "Maíz",             "Girasol",          "Cebada/Soja 2da",  "Girasol",          null               ],
+    ["EL OREJANO",            "2b",          27,    null,               "Soja",             "Cebada/Soja 2da",  "Girasol",          null               ],
+    ["EL OREJANO",            "3",         10.6,    "Maíz",             "Girasol",          "Cebada/Soja 2da",  "Girasol",          null               ],
+    ["EL OREJANO",            "3b",          20,    null,               "Soja",             "Cebada/Soja 2da",  "Girasol",          null               ],
+    ["EL OREJANO",            "4",            6,    "Maíz",             "Girasol",          "Cebada/Soja 2da",  "Girasol",          null               ],
+    ["EL OREJANO",            "4b",          33,    null,               "Soja",             "Cebada/Soja 2da",  "Girasol",          null               ],
+    ["EL OREJANO",            "5",         18.3,    "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  null               ],
+    ["EL OREJANO",            "6",           71,    "Cebada/Soja 2da",  "Soja",             "Cebada/Soja 2da",  "Cebada/Soja 2da",  null               ],
+    ["EL OREJANO",            "7",           48,    "Girasol",          "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Girasol",          null               ],
+    ["EL OREJANO",            "8",         41.6,    "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  null               ],
+    ["EL OREJANO",            "9",           40,    "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  null               ],
+    ["EL OREJANO",            "10",          40,    "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  null               ],
+    ["EL OREJANO",            "11",        32.2,    "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  null               ],
+    ["EL OREJANO",            "12",        63.37,   "Girasol",          "Soja",             "Cebada/Soja 2da",  "Girasol",          null               ],
+    ["EL OREJANO",            "13",          12,    "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  null               ],
+    ["EL OREJANO",            "14",        11.5,    "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da",  null               ],
+    ["EL OREJANO",            "15A",         16,    "Girasol",          "Maíz",             "Soja",             "Cebada/Soja 2da",  null               ],
+    ["EL OREJANO",            "15B",         43,    null,               "Soja",             "Cebada/Soja 2da",  "Cebada/Soja 2da",  null               ],
+    ["EL OREJANO",            "16A",         36,    "Girasol",          "Maíz",             "Soja",             "Cebada/Soja 2da",  null               ],
+    ["EL OREJANO",            "16B",         29,    "Girasol",          "Soja",             "Cebada/Soja 2da",  "Cebada/Soja 2da",  null               ],
+    ["NOVELTY",               "1A",         132,    "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da"  ],
+    ["NOVELTY",               "1B",          48,    "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Maíz"             ],
+    ["NOVELTY",               "R1",          50,    "Maíz",             "Soja",             "Maíz",             "Soja 1era",        "Cebada/Soja 2da"  ],
+    ["NOVELTY",               "R2",          50,    "Maíz RR",          "Maíz",             "Soja",             "Cebada/Maíz 2da",  "Soja"             ],
+    ["SAN CARLOS",            "1",          102,    "Papa",             "Maíz",             "Cebada/Soja 2da",  null,               null               ],
+    ["LA CASILLA",            "1",           74,    "Maíz",             "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da"  ],
+    ["BARBERIA",              "5A",          43,    null,               "Soja",             "Girasol",          "Cebada/Soja 2da",  "Girasol"          ],
+    ["BARBERIA",              "2R",          63,    "Cebada/Soja 2da",  "Girasol",          "Soja",             "Cebada/Soja 2da",  "Girasol"          ],
+    ["BARBERIA",              "5B",          22,    "Girasol",          "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Girasol",          "Trigo/Soja 2da"   ],
+    ["BARBERIA",              "3S",          60,    "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Girasol"          ],
+    ["BARBERIA",              "3R",          51,    "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Cebada/Soja 2da"  ],
+    ["BARBERIA",              "4",            9,    "Girasol",          "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da"  ],
+    ["BARBERIA",              "5R",          50,    "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Trigo/Soja 2da"   ],
+    ["BARBERIA",              "2S",        23.5,    "Girasol",          "Maíz",             "Girasol",          "Cebada/Soja 2da",  "Girasol"          ],
+    ["BARBERIA",              "1",           50,    null,               null,               "Girasol",          "Soja 1era",        "Cebada/Soja 2da"  ],
+    ["LA RINCONADA",          "1",           59,    "Girasol",          "Cebada/Soja 2da",  "Maíz",             null,               null               ],
+    ["LA RINCONADA",          "2",           49,    "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  null,               null               ],
+    ["LA RINCONADA",          "3",           74,    "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  null,               null               ],
+    ["LA RINCONADA",          "4",           90,    "Girasol",          "Cebada/Soja 2da",  "Maíz",             null,               null               ],
+    ["LA RINCONADA",          "5",           53,    "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  null,               null               ],
+    ["CAMPO FARAMINIAN",      "1",           56,    "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da"  ],
+    ["TAMANGUEYU",            "1",           64,    "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Maíz",             "Girasol"          ],
+    ["TAMANGUEYU LA MASCOTA", "1",           29,    null,               "Girasol",          "Cebada/Soja 2da",  "Maíz",             "Girasol"          ],
+    ["SORDELLI",              null,         195,    "Girasol",          "Trigo/Soja 2da",   "Girasol",          "Cebada/Soja 2da",  "Girasol"          ],
+    ["LA SOÑADA QUIQUE",      "1",          122,    "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Girasol"          ],
+    ["TOME Y TRAIGA",         "1",           38,    "Cebada/Soja 2da",  "Maíz",             "Soja 1era",        "Cebada/Soja 2da",  "Maíz"             ],
+    ["CAMPO FLOR",            "1R",          68,    "Maíz",             "Maíz",             "Soja 1era",        "Cebada/Soja 2da",  "Trébol"           ],
+    ["CAMPO FLOR",            "1s",          19,    "Maíz",             "Maíz",             "Soja 2da",         "Cebada/Soja 2da",  null               ],
+    ["CAMPO FLOR",            "2r",          68,    "Cebada/Soja 2da",  "Maíz",             "Papa",             "Cebada/Soja 2da",  "Girasol"          ],
+    ["CAMPO FLOR",            "3r",          68,    "Cebada/Soja 2da",  "Maíz",             "Soja 1era",        "Cebada/Soja 2da",  "Girasol"          ],
+    ["CAMPO FLOR",            "2-3 secano",  59,    "Soja",             "Soja",             "Cebada/Soja 2da",  "Cebada/Soja 2da",  "Girasol"          ],
+    ["ASAT",                  "1",           57,    "Girasol",          "Cebada/Soja 2da",  "Girasol",          "Cebada/Soja 2da",  "Girasol"          ],
+    ["LA PROVIDENCIA",        "1",           42,    null,               "Cebada/Soja 2da",  "Girasol",          null,               null               ],
+    ["LA PROVIDENCIA",        "2",           25,    null,               "Cebada/Soja 2da",  "Girasol",          null,               null               ],
+    ["LA PROVIDENCIA",        "3",           27,    null,               "Girasol",          "Cebada/Soja 2da",  null,               null               ],
+    ["LA PROVIDENCIA",        "5",           35,    null,               "Cebada/Soja 2da",  "Maíz",             null,               null               ],
+    ["LA PROVIDENCIA",        "6",           26,    null,               "Girasol",          "Cebada/Soja 2da",  null,               null               ],
+    ["LA PROVIDENCIA",        "8",           33,    null,               "Cebada/Soja 2da",  "Girasol",          null,               null               ],
+    ["LA PROVIDENCIA",        "9",          104,    null,               "Maíz",             "Girasol",          null,               null               ],
+    ["LA PROVIDENCIA",        "10",          76,    null,               "Maíz",             "Soja 1era",        null,               null               ],
+    ["LA PROVIDENCIA",        "11",          60,    null,               "Cebada/Soja 2da",  "Girasol",          null,               null               ],
+    ["LA PROVIDENCIA",        "12",         105,    null,               "Girasol",          "Cebada/Soja 2da",  null,               null               ],
+    ["LA PROVIDENCIA",        "13",          61,    null,               "Girasol",          "Cebada/Soja 2da",  null,               null               ],
+    ["LA PROVIDENCIA",        "14",          53,    null,               "Cebada/Soja 2da",  "Maíz",             null,               null               ],
+    ["LA PROVIDENCIA",        "15",          78,    null,               "Maíz",             "Soja 1era",        null,               null               ],
+    ["LA PROVIDENCIA",        "16",          28,    null,               "Cebada/Soja 2da",  "Girasol",          null,               null               ],
+    ["LA PROVIDENCIA",        "18",          71,    null,               "Girasol",          "Cebada/Soja 2da",  null,               null               ],
+    ["LA PROVIDENCIA",        "19",          45,    null,               "Cebada/Soja 2da",  "Maíz",             null,               null               ],
+    ["LA PROVIDENCIA",        "20",           9,    null,               "Cebada/Soja 2da",  "Soja 1era",        null,               null               ],
+    ["LOS EUCALIPTUS",        "1",           40,    null,               "Girasol",          "Cebada/Soja 2da",  null,               null               ],
+    ["LOS EUCALIPTUS",        "2",           82,    null,               "Cebada/Soja 2da",  "Girasol",          null,               null               ],
+    ["HERMIDA",               "1",          120,    null,               "Girasol",          "Trigo/Soja 2da",   "Girasol",          null               ],
+    ["CAMPO COPPOLA",         null,          70,    null,               "Girasol",          "Cebada/Soja 2da",  null,               null               ],
+    ["LA FRANCISCA",          "PIVOT",       40,    null,               null,               "Maíz",             "Cebada/Soja 2da",  "Maíz"             ],
+    ["LA FRANCISCA",          "SECANO",     132,    null,               null,               "Girasol",          "Cebada/Soja 2da",  "Girasol"          ],
+  ];
+
+  const CAMPS = ["2022/2023","2023/2024","2024/2025","2025/2026","2026/2027"];
+
+  function parseCrop(s) {
+    if (!s) return null;
+    s = String(s).trim();
+    if (!s || s==='—' || s==='-') return null;
+    const slash = s.indexOf('/');
+    if (slash > 0) return { cultivo: s.slice(0,slash).trim(), cultivo2: s.slice(slash+1).trim() };
+    return { cultivo: s, cultivo2: null };
+  }
+
+  const newCampos = [];
+  CAMPS.forEach((campana, ci) => {
+    const campoMap = {};
+    ROWS.forEach(([campoNombre, loteRaw, hasPropias, ...crops]) => {
+      const crop = parseCrop(crops[ci]);
+      if (!crop) return;
+      const loteName = loteRaw ? `Lote ${loteRaw}` : 'Lote único';
+      if (!campoMap[campoNombre]) campoMap[campoNombre] = [];
+      campoMap[campoNombre].push({ id: uid(), nombre: loteName, superficie: hasPropias,
+        cultivo: crop.cultivo, cultivo2: crop.cultivo2||null, inversor: '' });
+    });
+    Object.entries(campoMap).forEach(([nombre, lotes]) => {
+      newCampos.push({ id: uid(), nombre, campana, inversor: '', lotes });
+    });
+  });
+
+  const key = `agrolabores_v1_${st.orgId}`;
+  const existing = JSON.parse(localStorage.getItem(key) || '{"campos":[],"registros":[]}');
+  const existingKeys = new Set(existing.campos.map(c=>`${c.nombre}||${c.campana}`));
+  const toAdd = newCampos.filter(c=>!existingKeys.has(`${c.nombre}||${c.campana}`));
+  existing.campos = [...existing.campos, ...toAdd];
+  localStorage.setItem(key, JSON.stringify(existing));
+  db = existing;
+
+  // Ocultar botón después de cargar
+  document.getElementById('btn-cargar-historial').classList.add('hidden');
+
+  const bycamp = {};
+  toAdd.forEach(c=>{ bycamp[c.campana]=(bycamp[c.campana]||0)+1; });
+  const summary = Object.entries(bycamp).map(([k,v])=>`${k}: ${v} campos`).join('\n');
+  alert(`✅ Cargados ${toAdd.length} campos en ${Object.keys(bycamp).length} campañas:\n\n${summary}`);
+
+  expandedCampanas.clear();
+  renderSidebar();
+  updateFacturasBadge();
+}
+
+function showAnalisis() {
+  // Análisis financiero removido — ver sección Cosecha
+}
+
+
+
+// Teclado: N para nueva aplicación
+document.addEventListener('keydown', e => {
+  if (e.key==='n'&&!e.ctrlKey&&!e.metaKey&&st.campoId&&st.tab==='registros') {
+    const tag = document.activeElement.tagName;
+    if (!['INPUT','SELECT','TEXTAREA'].includes(tag)) openAplicacion();
+  }
+});
+</script>
+</body>
+</html>
