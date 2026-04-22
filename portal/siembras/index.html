@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Siembras TA-Agrowillem</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -112,7 +112,7 @@
       }
       #sidebar-overlay.show { display: block; }
       #btn-hamburger { display: flex !important; }
-      body.sidebar-is-open { overflow: hidden; touch-action: none; }
+      body.sidebar-is-open { position: fixed; width: 100%; overflow-y: scroll; }
       /* main content scrollable on mobile */
       .flex-1.flex.flex-col.overflow-hidden > main {
         -webkit-overflow-scrolling: touch;
@@ -860,15 +860,27 @@ async function doLogin() {
   }
 }
 
+let _scrollY = 0;
 function toggleSidebar() {
   const open = document.getElementById('app-sidebar').classList.toggle('sidebar-open');
   document.getElementById('sidebar-overlay').classList.toggle('show', open);
-  document.body.classList.toggle('sidebar-is-open', open);
+  if (open) {
+    _scrollY = window.scrollY;
+    document.body.classList.add('sidebar-is-open');
+    document.body.style.top = `-${_scrollY}px`;
+  } else {
+    _closeSidebarBody();
+  }
 }
 function closeSidebar() {
   document.getElementById('app-sidebar').classList.remove('sidebar-open');
   document.getElementById('sidebar-overlay').classList.remove('show');
+  _closeSidebarBody();
+}
+function _closeSidebarBody() {
   document.body.classList.remove('sidebar-is-open');
+  document.body.style.top = '';
+  window.scrollTo(0, _scrollY);
 }
 
 async function doLogout() {
