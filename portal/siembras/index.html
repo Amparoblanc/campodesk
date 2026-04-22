@@ -91,25 +91,23 @@
     /* Mobile sidebar */
     @media (max-width: 767px) {
       #app-sidebar {
-        position: fixed; top: 0; left: 0; height: 100%; z-index: 100;
+        position: fixed; top: 0; left: 0; height: 100vh; z-index: 100;
         transform: translateX(-100%);
         transition: transform 0.25s ease;
         width: 75vw !important; max-width: 280px;
-        overflow-y: auto;
+        overflow-y: scroll;
         overflow-x: hidden;
         -webkit-overflow-scrolling: touch;
         overscroll-behavior: contain;
-        display: block !important;
       }
       #app-sidebar.sidebar-open { transform: translateX(0); }
-      #sidebar-scroll { overflow: visible; height: auto; }
+      #sidebar-scroll { flex: none; overflow: visible; }
       #sidebar-overlay {
         display: none; position: fixed; inset: 0;
         background: rgba(0,0,0,0.5); z-index: 99;
       }
       #sidebar-overlay.show { display: block; }
       #btn-hamburger { display: flex !important; }
-      body.sidebar-is-open { position: fixed; width: 100%; overflow-y: scroll; }
       /* main content scrollable on mobile */
       .flex-1.flex.flex-col.overflow-hidden > main {
         -webkit-overflow-scrolling: touch;
@@ -857,27 +855,13 @@ async function doLogin() {
   }
 }
 
-let _scrollY = 0;
 function toggleSidebar() {
   const open = document.getElementById('app-sidebar').classList.toggle('sidebar-open');
   document.getElementById('sidebar-overlay').classList.toggle('show', open);
-  if (open) {
-    _scrollY = window.scrollY;
-    document.body.classList.add('sidebar-is-open');
-    document.body.style.top = `-${_scrollY}px`;
-  } else {
-    _closeSidebarBody();
-  }
 }
 function closeSidebar() {
   document.getElementById('app-sidebar').classList.remove('sidebar-open');
   document.getElementById('sidebar-overlay').classList.remove('show');
-  _closeSidebarBody();
-}
-function _closeSidebarBody() {
-  document.body.classList.remove('sidebar-is-open');
-  document.body.style.top = '';
-  window.scrollTo(0, _scrollY);
 }
 
 async function doLogout() {
