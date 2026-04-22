@@ -91,18 +91,33 @@
     /* Mobile sidebar */
     @media (max-width: 767px) {
       #app-sidebar {
-        position: fixed; top: 0; left: 0; bottom: 0; z-index: 100;
+        position: fixed; top: 0; left: 0; height: 100dvh; z-index: 100;
         transform: translateX(-100%);
         transition: transform 0.25s ease;
-        width: 240px !important;
+        width: 75vw !important; max-width: 280px;
+        display: flex; flex-direction: column;
+        overflow: hidden;
       }
       #app-sidebar.sidebar-open { transform: translateX(0); }
+      #app-sidebar .flex-1 {
+        flex: 1 1 0;
+        overflow-y: scroll;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        min-height: 0;
+      }
       #sidebar-overlay {
         display: none; position: fixed; inset: 0;
         background: rgba(0,0,0,0.5); z-index: 99;
       }
       #sidebar-overlay.show { display: block; }
       #btn-hamburger { display: flex !important; }
+      body.sidebar-is-open { overflow: hidden; touch-action: none; }
+      /* main content scrollable on mobile */
+      .flex-1.flex.flex-col.overflow-hidden > main {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+      }
     }
     #btn-hamburger { display: none; }
     .ro { background:#f8fafc; color:#64748b; }
@@ -846,12 +861,14 @@ async function doLogin() {
 }
 
 function toggleSidebar() {
-  document.getElementById('app-sidebar').classList.toggle('sidebar-open');
-  document.getElementById('sidebar-overlay').classList.toggle('show');
+  const open = document.getElementById('app-sidebar').classList.toggle('sidebar-open');
+  document.getElementById('sidebar-overlay').classList.toggle('show', open);
+  document.body.classList.toggle('sidebar-is-open', open);
 }
 function closeSidebar() {
   document.getElementById('app-sidebar').classList.remove('sidebar-open');
   document.getElementById('sidebar-overlay').classList.remove('show');
+  document.body.classList.remove('sidebar-is-open');
 }
 
 async function doLogout() {
@@ -2337,6 +2354,7 @@ function selectCampo(id) {
   act.style.display = 'flex';
   document.getElementById('tabs-bar').classList.remove('hidden');
   setTab('registros');
+  if (window.innerWidth < 768) closeSidebar();
 }
 
 function saveCampo() {
