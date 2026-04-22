@@ -244,7 +244,7 @@ body.ro-mode .btn-y.btn-sm { display:none!important; }
       <input type="password" id="login-pwd" placeholder="••••••••" style="width:100%" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <div id="login-err" style="display:none;font-size:11px;color:var(--r);margin-bottom:12px;text-align:center;background:var(--rbg);padding:8px 12px;border-radius:8px;border:1px solid var(--rbd)">Contraseña incorrecta</div>
-    <button class="btn btn-y" style="width:100%;justify-content:center;padding:12px;font-size:14px" onclick="doLogin()">Ingresar</button>
+    <button id="login-btn" class="btn btn-y" style="width:100%;justify-content:center;padding:12px;font-size:14px" onclick="doLogin()">Ingresar</button>
   </div>
 </div>
 
@@ -768,6 +768,7 @@ const fbConfig={
 firebase.initializeApp(fbConfig);
 const db=firebase.database();
 let _syncing=false;
+let _cachedPasswords=null;
 
 /* ══════════════════════════════
    STATE
@@ -2845,14 +2846,20 @@ function applyRO(){
 async function doLogin(){
   const pwd=document.getElementById('login-pwd').value.trim();
   if(!pwd)return;
+  const btn=document.getElementById('login-btn');
   document.getElementById('login-err').style.display='none';
+  btn.disabled=true;
+  btn.textContent='Verificando…';
   try{
-    const [snapAdmin, snapRO]=await Promise.all([
-      db.ref('config/passwords').once('value'),
-      db.ref('config/readonly').once('value')
-    ]);
-    const pwdsAdmin=snapAdmin.val()||{};
-    const pwdsRO=snapRO.val()||{};
+    if(!_cachedPasswords){
+      const [snapAdmin,snapRO]=await Promise.all([
+        db.ref('config/passwords').once('value'),
+        db.ref('config/readonly').once('value')
+      ]);
+      _cachedPasswords={admin:snapAdmin.val()||{},ro:snapRO.val()||{}};
+    }
+    const pwdsAdmin=_cachedPasswords.admin;
+    const pwdsRO=_cachedPasswords.ro;
     if(Object.values(pwdsAdmin).includes(pwd)){
       await firebase.auth().signInAnonymously();
       sessionStorage.setItem('cosecha_auth','1');
@@ -2870,11 +2877,22 @@ async function doLogin(){
       applyRO();
       startRealtimeSync();
     } else {
-      document.getElementById('login-err').style.display='block';
+      const errEl=document.getElementById('login-err');
+      errEl.textContent='Contraseña incorrecta';
+      errEl.style.display='block';
       document.getElementById('login-pwd').value='';
       document.getElementById('login-pwd').focus();
+      btn.disabled=false;
+      btn.textContent='Ingresar';
     }
-  }catch(e){toast('Error de conexi\u00F3n: '+e.message);}
+  }catch(e){
+    const errEl=document.getElementById('login-err');
+    errEl.textContent='⚠ Sin conexión. Verificá tu internet e intentá de nuevo.';
+    errEl.style.display='block';
+    btn.disabled=false;
+    btn.textContent='Ingresar';
+    _cachedPasswords=null;
+  }
 }
 
 function showCampaignScreen(){
@@ -2991,8 +3009,12 @@ function startRealtimeSync(){
 
 async function checkSetup(){
   try{
-    const snap=await db.ref('config/passwords').once('value');
-    const pwds=snap.val();
+    const [snapAdmin,snapRO]=await Promise.all([
+      db.ref('config/passwords').once('value'),
+      db.ref('config/readonly').once('value')
+    ]);
+    const pwds=snapAdmin.val();
+    _cachedPasswords={admin:pwds||{},ro:snapRO.val()||{}};
     document.body.style.visibility='visible';
     if(!pwds){
       document.getElementById('setup-screen').style.display='flex';
@@ -3007,7 +3029,9 @@ async function checkSetup(){
     }
   }catch(e){
     document.body.style.visibility='visible';
-    toast('Sin conexi\u00F3n a Firebase: '+e.message);
+    const errEl=document.getElementById('login-err');
+    if(errEl){errEl.textContent='⚠ Sin conexión. Verificá tu internet.';errEl.style.display='block';}
+    document.getElementById('login-screen').style.display='flex';
   }
 }
 
