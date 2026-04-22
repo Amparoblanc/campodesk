@@ -99,12 +99,13 @@
         overflow: hidden;
       }
       #app-sidebar.sidebar-open { transform: translateX(0); }
-      #app-sidebar .flex-1 {
-        flex: 1 1 0;
-        overflow-y: scroll;
-        -webkit-overflow-scrolling: touch;
+      #sidebar-scroll {
+        flex: 1 1 0 !important;
+        overflow-y: scroll !important;
+        -webkit-overflow-scrolling: touch !important;
         overscroll-behavior: contain;
-        min-height: 0;
+        min-height: 0 !important;
+        height: 0;
       }
       #sidebar-overlay {
         display: none; position: fixed; inset: 0;
@@ -254,7 +255,7 @@
     </button>
     <p class="text-green-600 text-xs mt-1.5 px-1" id="sidebar-campana">—</p>
   </div>
-  <div class="flex-1 overflow-y-auto py-3 px-2">
+  <div id="sidebar-scroll" class="flex-1 overflow-y-auto py-3 px-2">
     <!-- Vistas globales -->
     <div class="px-1 pb-2 mb-2 border-b border-green-900 space-y-0.5">
       <button onclick="showPlanSiembra()" id="btn-plan-siembra"
@@ -307,18 +308,18 @@
         <p id="campo-subtitle" class="text-xs text-gray-400 mt-0.5"></p>
       </div>
     </div>
-    <div id="campo-actions" class="hidden items-center gap-2">
+    <div id="campo-actions" class="hidden items-center gap-1.5 flex-shrink-0">
       <button onclick="openNuevoLote()"
-        class="text-sm border border-gray-300 hover:bg-gray-50 px-3 py-1.5 rounded-lg text-gray-700">
+        class="text-xs border border-gray-300 hover:bg-gray-50 px-2 py-1.5 rounded-lg text-gray-700 whitespace-nowrap">
         + Lote
       </button>
       <button onclick="openAplicacion()"
-        class="text-sm bg-green-700 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg">
-        + Aplicación / Registro
+        class="text-xs bg-green-700 hover:bg-green-600 text-white px-2 py-1.5 rounded-lg whitespace-nowrap">
+        + Registro
       </button>
       <button onclick="exportarExcel()"
-        class="text-sm bg-blue-700 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg">
-        ↓ Exportar Excel
+        class="text-xs bg-blue-700 hover:bg-blue-600 text-white px-2 py-1.5 rounded-lg whitespace-nowrap hidden sm:block">
+        ↓ Excel
       </button>
     </div>
   </header>
