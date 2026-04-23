@@ -88,15 +88,18 @@
     ::-webkit-scrollbar { width:5px; height:5px; }
     ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
 
-    /* Mobile sidebar */
+    /* Mobile */
     @media (max-width: 767px) {
-      #app-sidebar {
-        display: none;
-        width: 100% !important;
-        max-width: 100% !important;
-      }
+      body { height: auto !important; overflow-y: auto !important; }
+      body.h-screen { height: auto !important; }
+      .flex.flex-1.overflow-hidden,
+      #main-content,
+      #main-content main { overflow: visible !important; height: auto !important; flex: none !important; }
+      /* Sidebar: oculto por defecto, pantalla completa cuando abre */
+      #app-sidebar { display: none; width: 100% !important; max-width: 100% !important; height: auto !important; overflow-y: auto !important; }
       #app-sidebar.sidebar-open { display: flex; }
       #main-content.sidebar-hidden { display: none; }
+      #sidebar-scroll { flex: none !important; overflow: visible !important; height: auto !important; }
       #sidebar-overlay { display: none !important; }
       #btn-hamburger { display: flex !important; }
       #btn-back-sidebar { display: block !important; }
