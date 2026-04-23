@@ -90,13 +90,7 @@
 
     /* ── MOBILE ── */
     @media (max-width: 767px) {
-      /* Igual que cosecha: body fluye naturalmente, el documento scrollea solo */
-      body { height: auto !important; min-height: 100vh !important; overflow: visible !important; display: block !important; }
-      #app-container { height: auto !important; min-height: 0 !important; overflow: visible !important; flex: none !important; display: block !important; width: 100% !important; }
-      #main-content { height: auto !important; min-height: 0 !important; overflow: visible !important; flex: none !important; display: block !important; width: 100% !important; }
-      #main-content main { height: auto !important; min-height: 0 !important; overflow-x: auto !important; overflow-y: visible !important; flex: none !important; display: block !important; -webkit-overflow-scrolling: touch !important; }
-      #sidebar-scroll { height: auto !important; min-height: 0 !important; overflow: visible !important; flex: none !important; display: block !important; }
-      #app-sidebar { display: none !important; width: 100% !important; height: auto !important; overflow: visible !important; }
+      #app-sidebar { display: none !important; width: 100% !important; }
       #app-sidebar.sidebar-open { display: block !important; }
       #main-content.sidebar-hidden { display: none !important; }
       #btn-hamburger { display: flex !important; }
@@ -849,40 +843,46 @@ async function doLogin() {
   }
 }
 
-// Fix mobile — remove Tailwind layout classes directly so natural page flow takes over
+// iOS iframe scroll fix: position:fixed wrapper con overflow:scroll (único approach confiable en iOS Safari)
 if (window.innerWidth < 768) {
+  // Quitar clases de Tailwind que bloquean el layout
   document.body.classList.remove('h-screen', 'overflow-hidden', 'flex', 'flex-col');
-  document.body.style.minHeight = '100vh'; // igual que cosecha, sin overflow forzado
+  document.body.style.overflow = 'hidden';
 
-  const appContainer = document.getElementById('app-container');
-  if (appContainer) {
-    appContainer.classList.remove('flex', 'flex-1', 'overflow-hidden');
-    appContainer.style.cssText = 'display:block;';
+  const appCont = document.getElementById('app-container');
+  if (appCont) {
+    appCont.classList.remove('flex', 'flex-1', 'overflow-hidden');
+    appCont.style.cssText = 'display:block;';
   }
-
-  const mainContent = document.getElementById('main-content');
-  if (mainContent) {
-    mainContent.classList.remove('flex-1', 'flex', 'flex-col', 'overflow-hidden');
-    mainContent.style.cssText = 'display:block;';
+  const mainCont = document.getElementById('main-content');
+  if (mainCont) {
+    mainCont.classList.remove('flex-1', 'flex', 'flex-col', 'overflow-hidden');
+    mainCont.style.cssText = 'display:block;';
   }
-
   const mainEl = document.querySelector('#main-content main');
   if (mainEl) {
     mainEl.classList.remove('flex-1', 'overflow-auto');
-    mainEl.style.cssText = 'display:block;overflow-x:auto;';
+    mainEl.style.cssText = 'display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;';
   }
-
   const sidebar = document.getElementById('app-sidebar');
   if (sidebar) {
     sidebar.classList.remove('flex', 'flex-col', 'flex-shrink-0');
     sidebar.style.cssText = 'display:none;width:100%;';
   }
-
   const sidebarScroll = document.getElementById('sidebar-scroll');
   if (sidebarScroll) {
     sidebarScroll.classList.remove('flex-1', 'overflow-y-auto');
-    sidebarScroll.style.cssText = 'display:block;overflow-y:visible;';
+    sidebarScroll.style.cssText = 'display:block;';
   }
+
+  // Crear el wrapper scroll de iOS
+  const wrapper = document.createElement('div');
+  wrapper.id = 'ios-scroll-wrapper';
+  wrapper.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;overflow-y:scroll;overflow-x:hidden;-webkit-overflow-scrolling:touch;';
+  const colab = document.getElementById('colab-banner');
+  if (colab) wrapper.appendChild(colab);
+  if (appCont) wrapper.appendChild(appCont);
+  document.body.appendChild(wrapper);
 }
 
 function toggleSidebar() {
@@ -892,6 +892,8 @@ function toggleSidebar() {
   sidebar.classList.toggle('sidebar-open', open);
   sidebar.style.display = open ? 'block' : 'none';
   main.style.display = open ? 'none' : 'block';
+  const w = document.getElementById('ios-scroll-wrapper');
+  if (w) w.scrollTop = 0;
 }
 function closeSidebar() {
   const sidebar = document.getElementById('app-sidebar');
@@ -899,6 +901,8 @@ function closeSidebar() {
   sidebar.classList.remove('sidebar-open');
   sidebar.style.display = 'none';
   main.style.display = 'block';
+  const w = document.getElementById('ios-scroll-wrapper');
+  if (w) w.scrollTop = 0;
 }
 
 async function doLogout() {
