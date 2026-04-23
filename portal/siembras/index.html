@@ -12,7 +12,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <style>
     /* ── SHELL — MOBILE FIRST (default = mobile, desktop es la excepción) ── */
-    body { font-family: system-ui, sans-serif; min-height: 100vh; overflow-y: auto; }
+    body { font-family: system-ui, sans-serif; min-height: 100dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
     /* Mobile: sidebar oculto por defecto, se abre como overlay fijo */
     #app-sidebar { display: none; }
@@ -31,7 +31,7 @@
 
     /* Desktop: layout fijo con sidebar + main side by side */
     @media (min-width: 768px) {
-      body { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+      body { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
       #app-container { display: flex; flex: 1; overflow: hidden; }
       #app-sidebar { display: flex; flex-direction: column; width: 208px; flex-shrink: 0; overflow: hidden; position: static; height: auto; }
       #sidebar-scroll { flex: 1; overflow-y: auto; height: auto; min-height: 0; }
