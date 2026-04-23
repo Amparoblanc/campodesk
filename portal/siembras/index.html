@@ -90,45 +90,16 @@
 
     /* ── MOBILE ── */
     @media (max-width: 767px) {
-      body {
-        height: auto !important;
-        overflow-y: scroll !important;
-        overflow-x: hidden !important;
-      }
-      #app-container {
-        height: auto !important;
-        overflow: visible !important;
-        flex: none !important;
-        display: block !important;
-      }
-      #main-content {
-        height: auto !important;
-        overflow: visible !important;
-        flex: none !important;
-        display: block !important;
-      }
-      #main-content main {
-        height: auto !important;
-        overflow-x: scroll !important;
-        overflow-y: visible !important;
-        flex: none !important;
-      }
-      #app-sidebar {
-        display: none;
-        width: 100% !important;
-        height: auto !important;
-        overflow-y: scroll !important;
-      }
-      #app-sidebar.sidebar-open { display: block; }
+      #app-sidebar { display: none; }
+      #app-sidebar.sidebar-open { display: block !important; }
       #main-content.sidebar-hidden { display: none !important; }
-      #sidebar-scroll { overflow: visible !important; height: auto !important; flex: none !important; }
-      #sidebar-overlay { display: none !important; }
       #btn-hamburger { display: flex !important; }
       #btn-back-sidebar { display: block !important; }
       #main-content header { position: sticky; top: 0; z-index: 10; background: white; }
     }
     #btn-hamburger { display: none; }
     #btn-back-sidebar { display: none; }
+    #sidebar-overlay { display: none !important; }
     .ro { background:#f8fafc; color:#64748b; }
     /* product row inputs */
     .prod-input {
@@ -872,26 +843,56 @@ async function doLogin() {
   }
 }
 
-// Fix mobile scroll — remove overflow constraints on small screens
+// Fix mobile — remove Tailwind layout classes directly so natural page flow takes over
 if (window.innerWidth < 768) {
-  document.body.style.cssText += ';height:auto!important;overflow-y:auto!important';
-  ['app-container','main-content'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.cssText += ';height:auto!important;overflow:visible!important;display:block!important;flex:none!important';
-  });
-  const main = document.querySelector('#main-content main');
-  if (main) main.style.cssText += ';height:auto!important;overflow:visible!important;flex:none!important';
+  document.body.classList.remove('h-screen', 'overflow-hidden', 'flex', 'flex-col');
+  document.body.style.cssText = 'overflow-y:auto;overflow-x:hidden;';
+
+  const appContainer = document.getElementById('app-container');
+  if (appContainer) {
+    appContainer.classList.remove('flex', 'flex-1', 'overflow-hidden');
+    appContainer.style.cssText = 'display:block;';
+  }
+
+  const mainContent = document.getElementById('main-content');
+  if (mainContent) {
+    mainContent.classList.remove('flex-1', 'flex', 'flex-col', 'overflow-hidden');
+    mainContent.style.cssText = 'display:block;';
+  }
+
+  const mainEl = document.querySelector('#main-content main');
+  if (mainEl) {
+    mainEl.classList.remove('flex-1', 'overflow-auto');
+    mainEl.style.cssText = 'display:block;overflow-x:auto;';
+  }
+
+  const sidebar = document.getElementById('app-sidebar');
+  if (sidebar) {
+    sidebar.classList.remove('flex', 'flex-col', 'flex-shrink-0');
+    sidebar.style.cssText = 'display:none;width:100%;';
+  }
+
+  const sidebarScroll = document.getElementById('sidebar-scroll');
+  if (sidebarScroll) {
+    sidebarScroll.classList.remove('flex-1', 'overflow-y-auto');
+    sidebarScroll.style.cssText = 'display:block;overflow-y:visible;';
+  }
 }
 
 function toggleSidebar() {
   const sidebar = document.getElementById('app-sidebar');
   const main = document.getElementById('main-content');
-  const open = sidebar.classList.toggle('sidebar-open');
-  main.classList.toggle('sidebar-hidden', open);
+  const open = !sidebar.classList.contains('sidebar-open');
+  sidebar.classList.toggle('sidebar-open', open);
+  sidebar.style.display = open ? 'block' : 'none';
+  main.style.display = open ? 'none' : 'block';
 }
 function closeSidebar() {
-  document.getElementById('app-sidebar').classList.remove('sidebar-open');
-  document.getElementById('main-content').classList.remove('sidebar-hidden');
+  const sidebar = document.getElementById('app-sidebar');
+  const main = document.getElementById('main-content');
+  sidebar.classList.remove('sidebar-open');
+  sidebar.style.display = 'none';
+  main.style.display = 'block';
 }
 
 async function doLogout() {
