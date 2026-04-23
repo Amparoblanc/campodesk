@@ -88,21 +88,44 @@
     ::-webkit-scrollbar { width:5px; height:5px; }
     ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
 
-    /* Mobile */
+    /* ── MOBILE ── */
     @media (max-width: 767px) {
-      body { height: auto !important; overflow-y: auto !important; }
-      body.h-screen { height: auto !important; }
-      .flex.flex-1.overflow-hidden,
-      #main-content,
-      #main-content main { overflow: visible !important; height: auto !important; flex: none !important; }
-      /* Sidebar: oculto por defecto, pantalla completa cuando abre */
-      #app-sidebar { display: none; width: 100% !important; max-width: 100% !important; height: auto !important; overflow-y: auto !important; }
-      #app-sidebar.sidebar-open { display: flex; }
-      #main-content.sidebar-hidden { display: none; }
-      #sidebar-scroll { flex: none !important; overflow: visible !important; height: auto !important; }
+      body {
+        height: auto !important;
+        overflow-y: scroll !important;
+        overflow-x: hidden !important;
+      }
+      #app-container {
+        height: auto !important;
+        overflow: visible !important;
+        flex: none !important;
+        display: block !important;
+      }
+      #main-content {
+        height: auto !important;
+        overflow: visible !important;
+        flex: none !important;
+        display: block !important;
+      }
+      #main-content main {
+        height: auto !important;
+        overflow-x: scroll !important;
+        overflow-y: visible !important;
+        flex: none !important;
+      }
+      #app-sidebar {
+        display: none;
+        width: 100% !important;
+        height: auto !important;
+        overflow-y: scroll !important;
+      }
+      #app-sidebar.sidebar-open { display: block; }
+      #main-content.sidebar-hidden { display: none !important; }
+      #sidebar-scroll { overflow: visible !important; height: auto !important; flex: none !important; }
       #sidebar-overlay { display: none !important; }
       #btn-hamburger { display: flex !important; }
       #btn-back-sidebar { display: block !important; }
+      #main-content header { position: sticky; top: 0; z-index: 10; background: white; }
     }
     #btn-hamburger { display: none; }
     #btn-back-sidebar { display: none; }
@@ -218,7 +241,7 @@
 </div>
 
 <!-- APP CONTENT (sidebar + main side by side) -->
-<div class="flex flex-1 overflow-hidden">
+<div id="app-container" class="flex flex-1 overflow-hidden">
 
 <!-- Overlay mobile -->
 <div id="sidebar-overlay" onclick="closeSidebar()"></div>
@@ -847,6 +870,17 @@ async function doLogin() {
     btn.textContent = 'Ingresar';
     _cachedPasswords = null;
   }
+}
+
+// Fix mobile scroll — remove overflow constraints on small screens
+if (window.innerWidth < 768) {
+  document.body.style.cssText += ';height:auto!important;overflow-y:auto!important';
+  ['app-container','main-content'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.cssText += ';height:auto!important;overflow:visible!important;display:block!important;flex:none!important';
+  });
+  const main = document.querySelector('#main-content main');
+  if (main) main.style.cssText += ';height:auto!important;overflow:visible!important;flex:none!important';
 }
 
 function toggleSidebar() {
