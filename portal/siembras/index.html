@@ -95,13 +95,17 @@
         transform: translateX(-100%);
         transition: transform 0.25s ease;
         width: 75vw !important; max-width: 280px;
+        overflow: hidden;
         display: block !important;
-        overflow-y: auto;
-        overflow-x: hidden;
-        -webkit-overflow-scrolling: touch;
-        overscroll-behavior-y: contain;
       }
       #app-sidebar.sidebar-open { transform: translateX(0); }
+      #sidebar-ios-scroll {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        overflow-y: scroll;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+      }
       #sidebar-scroll { overflow: visible; }
       #sidebar-overlay {
         display: none; position: fixed; inset: 0;
@@ -235,6 +239,7 @@
 
 <!-- SIDEBAR -->
 <aside id="app-sidebar" class="w-52 flex-shrink-0 bg-green-950 flex flex-col text-white">
+<div id="sidebar-ios-scroll">
   <div class="px-4 pt-4 pb-3 border-b border-green-900">
     <div class="flex items-center gap-2 mb-2.5">
       <span class="text-lg">🌾</span>
@@ -286,6 +291,7 @@
       ↩ Cerrar sesión
     </button>
   </div>
+</div>
 </aside>
 
 <!-- MAIN -->
