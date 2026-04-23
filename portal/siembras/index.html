@@ -90,11 +90,11 @@
 
     /* ── MOBILE ── */
     @media (max-width: 767px) {
-      html { height: auto !important; overflow-y: scroll !important; -webkit-overflow-scrolling: touch !important; }
-      body { height: auto !important; min-height: 100% !important; overflow: visible !important; }
-      #app-container { height: auto !important; min-height: 0 !important; overflow: visible !important; flex: none !important; display: block !important; }
-      #main-content { height: auto !important; min-height: 0 !important; overflow: visible !important; flex: none !important; display: block !important; }
-      #main-content main { height: auto !important; min-height: 0 !important; overflow-x: auto !important; overflow-y: visible !important; flex: none !important; -webkit-overflow-scrolling: touch !important; }
+      /* Igual que cosecha: body fluye naturalmente, el documento scrollea solo */
+      body { height: auto !important; min-height: 100vh !important; overflow: visible !important; display: block !important; }
+      #app-container { height: auto !important; min-height: 0 !important; overflow: visible !important; flex: none !important; display: block !important; width: 100% !important; }
+      #main-content { height: auto !important; min-height: 0 !important; overflow: visible !important; flex: none !important; display: block !important; width: 100% !important; }
+      #main-content main { height: auto !important; min-height: 0 !important; overflow-x: auto !important; overflow-y: visible !important; flex: none !important; display: block !important; -webkit-overflow-scrolling: touch !important; }
       #sidebar-scroll { height: auto !important; min-height: 0 !important; overflow: visible !important; flex: none !important; display: block !important; }
       #app-sidebar { display: none !important; width: 100% !important; height: auto !important; overflow: visible !important; }
       #app-sidebar.sidebar-open { display: block !important; }
