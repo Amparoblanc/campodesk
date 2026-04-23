@@ -91,35 +91,18 @@
     /* Mobile sidebar */
     @media (max-width: 767px) {
       #app-sidebar {
-        position: fixed; top: 0; left: 0; bottom: 0; z-index: 100;
-        transform: translateX(-100%);
-        transition: transform 0.25s ease;
-        width: 75vw !important; max-width: 280px;
-        overflow: hidden;
-        display: block !important;
+        display: none;
+        width: 100% !important;
+        max-width: 100% !important;
       }
-      #app-sidebar.sidebar-open { transform: translateX(0); }
-      #sidebar-ios-scroll {
-        position: absolute;
-        top: 0; left: 0; right: 0; bottom: 0;
-        overflow-y: scroll;
-        -webkit-overflow-scrolling: touch;
-        overscroll-behavior: contain;
-      }
-      #sidebar-scroll { overflow: visible; }
-      #sidebar-overlay {
-        display: none; position: fixed; inset: 0;
-        background: rgba(0,0,0,0.5); z-index: 99;
-      }
-      #sidebar-overlay.show { display: block; }
+      #app-sidebar.sidebar-open { display: flex; }
+      #main-content.sidebar-hidden { display: none; }
+      #sidebar-overlay { display: none !important; }
       #btn-hamburger { display: flex !important; }
-      /* main content scrollable on mobile */
-      .flex-1.flex.flex-col.overflow-hidden > main {
-        -webkit-overflow-scrolling: touch;
-        overscroll-behavior: contain;
-      }
+      #btn-back-sidebar { display: block !important; }
     }
     #btn-hamburger { display: none; }
+    #btn-back-sidebar { display: none; }
     .ro { background:#f8fafc; color:#64748b; }
     /* product row inputs */
     .prod-input {
@@ -239,8 +222,10 @@
 
 <!-- SIDEBAR -->
 <aside id="app-sidebar" class="w-52 flex-shrink-0 bg-green-950 flex flex-col text-white">
-<div id="sidebar-ios-scroll">
   <div class="px-4 pt-4 pb-3 border-b border-green-900">
+    <button id="btn-back-sidebar" onclick="closeSidebar()" class="w-full text-left text-green-400 text-sm py-2 px-1 mb-2 flex items-center gap-2">
+      ← Volver
+    </button>
     <div class="flex items-center gap-2 mb-2.5">
       <span class="text-lg">🌾</span>
       <span class="font-semibold text-xs text-green-400 leading-tight">Siembras TA-Agrowillem</span>
@@ -291,11 +276,10 @@
       ↩ Cerrar sesión
     </button>
   </div>
-</div>
 </aside>
 
 <!-- MAIN -->
-<div class="flex-1 flex flex-col overflow-hidden">
+<div id="main-content" class="flex-1 flex flex-col overflow-hidden">
   <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between flex-shrink-0">
     <div class="flex items-center gap-3 min-w-0">
       <button id="btn-hamburger" onclick="toggleSidebar()"
@@ -863,12 +847,14 @@ async function doLogin() {
 }
 
 function toggleSidebar() {
-  const open = document.getElementById('app-sidebar').classList.toggle('sidebar-open');
-  document.getElementById('sidebar-overlay').classList.toggle('show', open);
+  const sidebar = document.getElementById('app-sidebar');
+  const main = document.getElementById('main-content');
+  const open = sidebar.classList.toggle('sidebar-open');
+  main.classList.toggle('sidebar-hidden', open);
 }
 function closeSidebar() {
   document.getElementById('app-sidebar').classList.remove('sidebar-open');
-  document.getElementById('sidebar-overlay').classList.remove('show');
+  document.getElementById('main-content').classList.remove('sidebar-hidden');
 }
 
 async function doLogout() {
