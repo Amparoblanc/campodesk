@@ -11,7 +11,13 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <style>
-    body { font-family: system-ui, sans-serif; }
+    /* Shell layout — desktop */
+    body { font-family: system-ui, sans-serif; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+    #app-container { display:flex; flex:1; overflow:hidden; }
+    #app-sidebar { width:208px; flex-shrink:0; display:flex; flex-direction:column; overflow:hidden; }
+    #sidebar-scroll { flex:1; overflow-y:auto; }
+    #main-content { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+    #main-content > main { flex:1; overflow:auto; }
     /* Sync indicator */
     #sync-indicator { position:fixed; bottom:12px; right:12px; z-index:999; display:flex; align-items:center;
       gap:6px; background:white; border:1px solid #e5e7eb; border-radius:20px; padding:4px 10px;
@@ -90,12 +96,21 @@
 
     /* ── MOBILE ── */
     @media (max-width: 767px) {
-      #app-sidebar { display: none !important; width: 100% !important; }
-      #app-sidebar.sidebar-open { display: block !important; }
+      /* Body: flujo natural, el documento scrollea como cosecha */
+      body { height: auto !important; min-height: 100vh !important; overflow-y: auto !important; display: block !important; }
+      /* Contenedores principales: bloque, sin restricciones */
+      #app-container { display: block !important; overflow: visible !important; height: auto !important; }
+      #main-content { display: block !important; overflow: visible !important; height: auto !important; }
+      #main-content > main { overflow-x: auto !important; overflow-y: visible !important; height: auto !important; -webkit-overflow-scrolling: touch !important; }
       #main-content.sidebar-hidden { display: none !important; }
+      /* Sidebar: overlay fijo con scroll propio — único approach confiable en iOS */
+      #app-sidebar { display: none !important; position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100% !important; height: 100vh !important; flex-direction: column !important; z-index: 100 !important; overflow: hidden !important; }
+      #app-sidebar.sidebar-open { display: flex !important; }
+      #sidebar-scroll { flex: 1 !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch !important; height: 0 !important; min-height: 0 !important; }
+      /* Header sticky */
+      #main-content > header { position: sticky !important; top: 0 !important; z-index: 10 !important; background: white !important; }
       #btn-hamburger { display: flex !important; }
       #btn-back-sidebar { display: block !important; }
-      #main-content header { position: sticky; top: 0; z-index: 10; background: white; }
     }
     #btn-hamburger { display: none; }
     #btn-back-sidebar { display: none; }
@@ -137,7 +152,7 @@
     .cat-add-btn:hover { background:#16a34a; border-color:#16a34a; color:white; }
   </style>
 </head>
-<body class="h-screen flex flex-col overflow-hidden bg-slate-100">
+<body class="bg-slate-100">
 
 <!-- ══════════ PANTALLA DE LOGIN ══════════ -->
 <div id="login-screen" class="fixed inset-0 bg-green-950 flex items-center justify-center z-[200] px-4">
@@ -212,13 +227,13 @@
 </div>
 
 <!-- APP CONTENT (sidebar + main side by side) -->
-<div id="app-container" class="flex flex-1 overflow-hidden">
+<div id="app-container">
 
 <!-- Overlay mobile -->
 <div id="sidebar-overlay" onclick="closeSidebar()"></div>
 
 <!-- SIDEBAR -->
-<aside id="app-sidebar" class="w-52 flex-shrink-0 bg-green-950 flex flex-col text-white">
+<aside id="app-sidebar" class="bg-green-950 text-white">
   <div class="px-4 pt-4 pb-3 border-b border-green-900">
     <button id="btn-back-sidebar" onclick="closeSidebar()" class="w-full text-left text-green-400 text-sm py-2 px-1 mb-2 flex items-center gap-2">
       ← Volver
@@ -237,7 +252,7 @@
     </button>
     <p class="text-green-600 text-xs mt-1.5 px-1" id="sidebar-campana">—</p>
   </div>
-  <div id="sidebar-scroll" class="flex-1 overflow-y-auto py-3 px-2">
+  <div id="sidebar-scroll" class="py-3 px-2">
     <!-- Vistas globales -->
     <div class="px-1 pb-2 mb-2 border-b border-green-900 space-y-0.5">
       <button onclick="showPlanSiembra()" id="btn-plan-siembra"
@@ -276,7 +291,7 @@
 </aside>
 
 <!-- MAIN -->
-<div id="main-content" class="flex-1 flex flex-col overflow-hidden">
+<div id="main-content">
   <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between flex-shrink-0">
     <div class="flex items-center gap-3 min-w-0">
       <button id="btn-hamburger" onclick="toggleSidebar()"
@@ -317,7 +332,7 @@
     </div>
   </div>
 
-  <main class="flex-1 overflow-auto p-5">
+  <main class="p-5">
 
     <!-- Welcome -->
     <div id="welcome-state" class="flex flex-col items-center justify-center h-full text-center">
@@ -843,66 +858,18 @@ async function doLogin() {
   }
 }
 
-// iOS iframe scroll fix: position:fixed wrapper con overflow:scroll (único approach confiable en iOS Safari)
-if (window.innerWidth < 768) {
-  // Quitar clases de Tailwind que bloquean el layout
-  document.body.classList.remove('h-screen', 'overflow-hidden', 'flex', 'flex-col');
-  document.body.style.overflow = 'hidden';
-
-  const appCont = document.getElementById('app-container');
-  if (appCont) {
-    appCont.classList.remove('flex', 'flex-1', 'overflow-hidden');
-    appCont.style.cssText = 'display:block;';
-  }
-  const mainCont = document.getElementById('main-content');
-  if (mainCont) {
-    mainCont.classList.remove('flex-1', 'flex', 'flex-col', 'overflow-hidden');
-    mainCont.style.cssText = 'display:block;';
-  }
-  const mainEl = document.querySelector('#main-content main');
-  if (mainEl) {
-    mainEl.classList.remove('flex-1', 'overflow-auto');
-    mainEl.style.cssText = 'display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;';
-  }
-  const sidebar = document.getElementById('app-sidebar');
-  if (sidebar) {
-    sidebar.classList.remove('flex', 'flex-col', 'flex-shrink-0');
-    sidebar.style.cssText = 'display:none;width:100%;';
-  }
-  const sidebarScroll = document.getElementById('sidebar-scroll');
-  if (sidebarScroll) {
-    sidebarScroll.classList.remove('flex-1', 'overflow-y-auto');
-    sidebarScroll.style.cssText = 'display:block;';
-  }
-
-  // Crear el wrapper scroll de iOS
-  const wrapper = document.createElement('div');
-  wrapper.id = 'ios-scroll-wrapper';
-  wrapper.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;overflow-y:scroll;overflow-x:hidden;-webkit-overflow-scrolling:touch;';
-  const colab = document.getElementById('colab-banner');
-  if (colab) wrapper.appendChild(colab);
-  if (appCont) wrapper.appendChild(appCont);
-  document.body.appendChild(wrapper);
-}
-
 function toggleSidebar() {
   const sidebar = document.getElementById('app-sidebar');
   const main = document.getElementById('main-content');
   const open = !sidebar.classList.contains('sidebar-open');
   sidebar.classList.toggle('sidebar-open', open);
-  sidebar.style.display = open ? 'block' : 'none';
-  main.style.display = open ? 'none' : 'block';
-  const w = document.getElementById('ios-scroll-wrapper');
-  if (w) w.scrollTop = 0;
+  main.classList.toggle('sidebar-hidden', open);
+  if (open) window.scrollTo(0, 0);
 }
 function closeSidebar() {
-  const sidebar = document.getElementById('app-sidebar');
-  const main = document.getElementById('main-content');
-  sidebar.classList.remove('sidebar-open');
-  sidebar.style.display = 'none';
-  main.style.display = 'block';
-  const w = document.getElementById('ios-scroll-wrapper');
-  if (w) w.scrollTop = 0;
+  document.getElementById('app-sidebar').classList.remove('sidebar-open');
+  document.getElementById('main-content').classList.remove('sidebar-hidden');
+  window.scrollTo(0, 0);
 }
 
 async function doLogout() {
