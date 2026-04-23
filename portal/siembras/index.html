@@ -846,7 +846,7 @@ async function doLogin() {
 // Fix mobile — remove Tailwind layout classes directly so natural page flow takes over
 if (window.innerWidth < 768) {
   document.body.classList.remove('h-screen', 'overflow-hidden', 'flex', 'flex-col');
-  document.body.style.cssText = 'overflow-y:auto;overflow-x:hidden;';
+  document.body.style.minHeight = '100vh'; // igual que cosecha, sin overflow forzado
 
   const appContainer = document.getElementById('app-container');
   if (appContainer) {
