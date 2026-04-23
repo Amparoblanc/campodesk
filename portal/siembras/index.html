@@ -11,13 +11,37 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <style>
-    /* Shell layout — desktop */
-    body { font-family: system-ui, sans-serif; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
-    #app-container { display:flex; flex:1; overflow:hidden; }
-    #app-sidebar { width:208px; flex-shrink:0; display:flex; flex-direction:column; overflow:hidden; }
-    #sidebar-scroll { flex:1; overflow-y:auto; }
-    #main-content { flex:1; display:flex; flex-direction:column; overflow:hidden; }
-    #main-content > main { flex:1; overflow:auto; }
+    /* ── SHELL — MOBILE FIRST (default = mobile, desktop es la excepción) ── */
+    body { font-family: system-ui, sans-serif; min-height: 100vh; overflow-y: auto; }
+
+    /* Mobile: sidebar oculto por defecto, se abre como overlay fijo */
+    #app-sidebar { display: none; }
+    #app-sidebar.sidebar-open {
+      display: flex; flex-direction: column;
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      width: 100%; height: 100vh; z-index: 100; overflow: hidden;
+    }
+    #sidebar-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; height: 0; min-height: 0; }
+    #main-content > header { position: sticky; top: 0; z-index: 10; background: white; }
+    #main-content > main { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    #main-content.sidebar-hidden { display: none; }
+    #btn-hamburger { display: flex; }
+    #btn-back-sidebar { display: block; }
+    #sidebar-overlay { display: none !important; }
+
+    /* Desktop: layout fijo con sidebar + main side by side */
+    @media (min-width: 768px) {
+      body { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+      #app-container { display: flex; flex: 1; overflow: hidden; }
+      #app-sidebar { display: flex; flex-direction: column; width: 208px; flex-shrink: 0; overflow: hidden; position: static; height: auto; }
+      #sidebar-scroll { flex: 1; overflow-y: auto; height: auto; min-height: 0; }
+      #main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+      #main-content > main { flex: 1; overflow: auto; }
+      #main-content > header { position: static; }
+      #main-content.sidebar-hidden { display: flex !important; }
+      #btn-hamburger { display: none !important; }
+      #btn-back-sidebar { display: none !important; }
+    }
     /* Sync indicator */
     #sync-indicator { position:fixed; bottom:12px; right:12px; z-index:999; display:flex; align-items:center;
       gap:6px; background:white; border:1px solid #e5e7eb; border-radius:20px; padding:4px 10px;
@@ -94,27 +118,6 @@
     ::-webkit-scrollbar { width:5px; height:5px; }
     ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
 
-    /* ── MOBILE ── */
-    @media (max-width: 767px) {
-      /* Body: flujo natural, el documento scrollea como cosecha */
-      body { height: auto !important; min-height: 100vh !important; overflow-y: auto !important; display: block !important; }
-      /* Contenedores principales: bloque, sin restricciones */
-      #app-container { display: block !important; overflow: visible !important; height: auto !important; }
-      #main-content { display: block !important; overflow: visible !important; height: auto !important; }
-      #main-content > main { overflow-x: auto !important; overflow-y: visible !important; height: auto !important; -webkit-overflow-scrolling: touch !important; }
-      #main-content.sidebar-hidden { display: none !important; }
-      /* Sidebar: overlay fijo con scroll propio — único approach confiable en iOS */
-      #app-sidebar { display: none !important; position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100% !important; height: 100vh !important; flex-direction: column !important; z-index: 100 !important; overflow: hidden !important; }
-      #app-sidebar.sidebar-open { display: flex !important; }
-      #sidebar-scroll { flex: 1 !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch !important; height: 0 !important; min-height: 0 !important; }
-      /* Header sticky */
-      #main-content > header { position: sticky !important; top: 0 !important; z-index: 10 !important; background: white !important; }
-      #btn-hamburger { display: flex !important; }
-      #btn-back-sidebar { display: block !important; }
-    }
-    #btn-hamburger { display: none; }
-    #btn-back-sidebar { display: none; }
-    #sidebar-overlay { display: none !important; }
     .ro { background:#f8fafc; color:#64748b; }
     /* product row inputs */
     .prod-input {

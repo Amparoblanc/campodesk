@@ -110,7 +110,7 @@
     .frames {
       flex: 1;
       position: relative;
-      overflow: hidden;
+      /* overflow: hidden removido — bloqueaba touch scroll en iOS Safari */
     }
     iframe {
       position: absolute;
@@ -121,6 +121,7 @@
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.25s ease;
+      -webkit-overflow-scrolling: touch; /* scroll momentum en iOS */
     }
     iframe.active {
       opacity: 1;
