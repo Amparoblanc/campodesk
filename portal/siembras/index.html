@@ -427,27 +427,29 @@
 
     <!-- Plan de Siembra (vista global) -->
     <div id="tab-content-plan-siembra" class="hidden">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h3 class="font-bold text-gray-800 text-lg">Plan de siembra</h3>
-          <p class="text-xs text-gray-400 mt-0.5">Cultivos por lote, por inversor y campo</p>
+      <div class="mb-4">
+        <div class="flex items-start justify-between gap-2 mb-3">
+          <div>
+            <h3 class="font-bold text-gray-800 text-lg">Plan de siembra</h3>
+            <p class="text-xs text-gray-400 mt-0.5">Cultivos por lote, por inversor y campo</p>
+          </div>
+          <button onclick="exportarPlanSiembra()"
+            class="flex-shrink-0 bg-blue-700 hover:bg-blue-600 text-white text-sm px-3 py-2 rounded-xl font-medium flex items-center gap-1.5">
+            ↓ Excel
+          </button>
         </div>
         <div class="flex items-center gap-2">
           <select id="plan-campana-sel" onchange="setPlanCampana(this.value)"
-            class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-green-500 bg-white font-medium text-gray-700">
+            class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-green-500 bg-white font-medium text-gray-700 flex-shrink-0">
           </select>
-          <div class="flex gap-1 bg-white border border-gray-200 rounded-xl p-1">
+          <div class="flex gap-1 bg-white border border-gray-200 rounded-xl p-1 flex-1">
             <button onclick="setPlanTab('dashboard')" id="plan-tab-dashboard"
-              class="plan-tab-btn px-4 py-1.5 text-sm font-medium rounded-lg transition-colors">📊 Dashboard</button>
+              class="plan-tab-btn flex-1 px-2 py-1.5 text-xs font-medium rounded-lg transition-colors">📊 Dashboard</button>
             <button onclick="setPlanTab('inversores')" id="plan-tab-inversores"
-              class="plan-tab-btn px-4 py-1.5 text-sm font-medium rounded-lg transition-colors">👤 Por inversor</button>
+              class="plan-tab-btn flex-1 px-2 py-1.5 text-xs font-medium rounded-lg transition-colors">👤 Inversores</button>
             <button onclick="setPlanTab('historia')" id="plan-tab-historia"
-              class="plan-tab-btn px-4 py-1.5 text-sm font-medium rounded-lg transition-colors">📅 Historia</button>
+              class="plan-tab-btn flex-1 px-2 py-1.5 text-xs font-medium rounded-lg transition-colors">📅 Historia</button>
           </div>
-          <button onclick="exportarPlanSiembra()"
-            class="bg-blue-700 hover:bg-blue-600 text-white text-sm px-3 py-2 rounded-xl font-medium flex items-center gap-1.5">
-            ↓ Excel
-          </button>
         </div>
       </div>
       <div id="plan-body"></div>
@@ -1574,6 +1576,7 @@ function showPlanSiembra() {
   document.getElementById('tab-content-plan-siembra').classList.remove('hidden');
   _refreshPlanCampanaSel();
   renderPlanSiembra();
+  if (window.innerWidth < 768) closeSidebar();
 }
 
 function _refreshPlanCampanaSel() {
@@ -1686,7 +1689,7 @@ function _renderPlanDashboard(byInv, allLotes, totalHa, totalLotes, camposFiltra
   const nInversores = Object.keys(byInv).length;
   const nCampos = db.campos.length;
 
-  let html = `<div class="grid grid-cols-4 gap-4 mb-5">`;
+  let html = `<div class="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4 md:gap-4">`;
   [
     { label: 'Superficie total', val: `${totalHa.toFixed(1)} ha`, sub: `${totalLotes} lotes` },
     { label: 'Cultivos distintos', val: nCultivos, sub: 'en el plan' },
@@ -1702,7 +1705,7 @@ function _renderPlanDashboard(byInv, allLotes, totalHa, totalLotes, camposFiltra
   // Resumen por cultivo
   html += `<div class="bg-white rounded-xl border border-gray-200 p-4 mb-5">
     <h4 class="font-semibold text-sm text-gray-600 mb-3">Resumen por cultivo</h4>
-    <table class="data-table">
+    <div class="overflow-x-auto"><table class="data-table">
       <thead><tr><th>Cultivo</th><th class="text-right">Lotes</th><th class="text-right">Ha totales</th><th class="text-right">% del plan</th><th>Campos</th></tr></thead>
       <tbody>`;
   const sortedCultivos = Object.entries(byCultivo).sort((a,b) => b[1]-a[1]);
@@ -1719,7 +1722,7 @@ function _renderPlanDashboard(byInv, allLotes, totalHa, totalLotes, camposFiltra
     </tr>`;
   });
   // Barra visual simple
-  html += `</tbody></table>
+  html += `</tbody></table></div>
     <div class="mt-3 flex rounded-full overflow-hidden h-3">`;
   const colors = ['#16a34a','#d97706','#2563eb','#dc2626','#7c3aed','#0891b2','#65a30d','#c2410c'];
   sortedCultivos.forEach(([cult, ha], i) => {
@@ -1969,6 +1972,7 @@ function showFacturasPendientes() {
   hideAllGlobalViews();
   document.getElementById('tab-content-facturas').classList.remove('hidden');
   renderFacturasPendientes();
+  if (window.innerWidth < 768) closeSidebar();
 }
 
 function _buildPendingItems() {
@@ -3447,9 +3451,5 @@ document.addEventListener('keydown', e => {
   }
 });
 </script>
-<!-- TEST SCROLL iOS — borrar después de confirmar que funciona -->
-<div id="scroll-test" style="height:2000px;background:linear-gradient(#e0f2e9,#bbf7d0);display:flex;align-items:flex-end;justify-content:center;padding:20px;">
-  <p style="font-size:14px;color:#166534;font-weight:600;">✅ Si ves esto, el scroll funciona en iOS</p>
-</div>
 </body>
 </html>
