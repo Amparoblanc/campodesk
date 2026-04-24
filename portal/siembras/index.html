@@ -12,14 +12,14 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <style>
     /* ── SHELL — MOBILE FIRST (default = mobile, desktop es la excepción) ── */
-    body { font-family: system-ui, sans-serif; min-height: 100dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    body { font-family: system-ui, sans-serif; margin: 0; min-height: 100dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
     /* Mobile: sidebar oculto por defecto, se abre como overlay fijo */
     #app-sidebar { display: none; }
     #app-sidebar.sidebar-open {
       display: flex; flex-direction: column;
       position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      width: 100%; height: 100vh; z-index: 100; overflow: hidden;
+      width: 100%; z-index: 100; overflow: hidden;
     }
     #sidebar-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; height: 0; min-height: 0; }
     #main-content > header { position: sticky; top: 0; z-index: 10; background: white; }
@@ -3447,5 +3447,9 @@ document.addEventListener('keydown', e => {
   }
 });
 </script>
+<!-- TEST SCROLL iOS — borrar después de confirmar que funciona -->
+<div id="scroll-test" style="height:2000px;background:linear-gradient(#e0f2e9,#bbf7d0);display:flex;align-items:flex-end;justify-content:center;padding:20px;">
+  <p style="font-size:14px;color:#166534;font-weight:600;">✅ Si ves esto, el scroll funciona en iOS</p>
+</div>
 </body>
 </html>
