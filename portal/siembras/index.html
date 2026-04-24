@@ -317,6 +317,10 @@
         class="text-xs bg-green-700 hover:bg-green-600 text-white px-2 py-1.5 rounded-lg whitespace-nowrap">
         + Registro
       </button>
+      <button onclick="imprimirCampo()"
+        class="text-xs bg-slate-600 hover:bg-slate-500 text-white px-2 py-1.5 rounded-lg whitespace-nowrap">
+        🖨 PDF
+      </button>
       <button onclick="exportarExcel()"
         class="text-xs bg-blue-700 hover:bg-blue-600 text-white px-2 py-1.5 rounded-lg whitespace-nowrap hidden sm:block">
         ↓ Excel
@@ -433,10 +437,16 @@
             <h3 class="font-bold text-gray-800 text-lg">Plan de siembra</h3>
             <p class="text-xs text-gray-400 mt-0.5">Cultivos por lote, por inversor y campo</p>
           </div>
-          <button onclick="exportarPlanSiembra()"
-            class="flex-shrink-0 bg-blue-700 hover:bg-blue-600 text-white text-sm px-3 py-2 rounded-xl font-medium flex items-center gap-1.5">
-            ↓ Excel
-          </button>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <button onclick="imprimirPlanSiembra()"
+              class="bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-xl font-medium flex items-center gap-1.5">
+              🖨 PDF
+            </button>
+            <button onclick="exportarPlanSiembra()"
+              class="bg-blue-700 hover:bg-blue-600 text-white text-sm px-3 py-2 rounded-xl font-medium flex items-center gap-1.5">
+              ↓ Excel
+            </button>
+          </div>
         </div>
         <div class="flex items-center gap-2">
           <select id="plan-campana-sel" onchange="setPlanCampana(this.value)"
@@ -3101,6 +3111,89 @@ function renderDoughnut(id,labels,data) {
 function destroyChart(id) { if(st.charts[id]){st.charts[id].destroy();delete st.charts[id];} }
 
 // ─── EXPORTAR EXCEL ───────────────────────────────────────────────────
+function imprimirCampo() {
+  const campo = getCampo(st.campoId);
+  if (!campo) return;
+  const regs = getReg(st.campoId).sort((a,b) => a.fecha.localeCompare(b.fecha) || (a.aplicacionId||a.id).localeCompare(b.aplicacionId||b.id));
+  const orgs = orgsLoad() || [];
+  const orgNombre = orgs.find(o => o.id === st.orgId)?.nombre || 'TA-Agrowillem';
+  const totalHa = campo.lotes.reduce((s,l)=>s+(l.superficie||0),0);
+  const totalPesos = regs.reduce((s,r)=>s+r.total,0);
+
+  // Lotes
+  let lotesRows = '';
+  campo.lotes.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(l => {
+    const cult = l.cultivo2 ? `${l.cultivo} + ${l.cultivo2}` : (l.cultivo||'—');
+    lotesRows += `<tr><td>${esc(l.nombre)}</td><td>${esc(cult)}</td><td class="num">${(l.superficie||0).toFixed(1)}</td><td>${esc(l.inversor||campo.inversor||'—')}</td></tr>`;
+  });
+
+  // Registros agrupados por fecha/aplicacion
+  const seen = new Set();
+  let regRows = '';
+  regs.forEach(r => {
+    const key = r.aplicacionId || r.id;
+    if (seen.has(key) && r.aplicacionId) return;
+    seen.add(key);
+    const grupo = r.aplicacionId ? regs.filter(x=>x.aplicacionId===r.aplicacionId) : [r];
+    const lotes = [...new Set(grupo.map(x=>x.loteName))].join(', ');
+    const cats  = [...new Set(grupo.map(x=>x.categoria))].join(', ');
+    const insumos = [...new Set(grupo.map(x=>x.insumo).filter(Boolean))].join(', ');
+    const sup   = [...new Set(grupo.map(x=>x.loteId))].reduce((s,lid)=>{ const x=grupo.find(y=>y.loteId===lid); return s+(x?x.superficie:0);},0);
+    const total = grupo.reduce((s,x)=>s+x.total,0);
+    const usdha = sup>0 ? round2(total/sup) : 0;
+    regRows += `<tr>
+      <td>${fmtDate(r.fecha)}</td>
+      <td>${esc(lotes)}</td>
+      <td class="num">${sup||''}</td>
+      <td>${esc([...new Set(grupo.map(x=>x.cultivo))].join(', '))}</td>
+      <td>${esc([...new Set(grupo.map(x=>x.contratista))].join(', '))}</td>
+      <td>${esc(cats)}</td>
+      <td>${esc(insumos)}</td>
+      <td>${esc(r.remito||'')}</td>
+      <td>${esc(r.ot||'')}</td>
+      <td>${esc([...new Set(grupo.map(x=>x.inversor))].join(', '))}</td>
+      <td class="num">${total?'$'+total.toFixed(2):''}</td>
+      <td class="num">${usdha||''}</td>
+    </tr>`;
+  });
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+  <title>${esc(campo.nombre)} — ${esc(campo.campana)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 10px; color: #111; margin: 20px; }
+    h1 { font-size: 16px; margin: 0 0 2px; color: #14532d; }
+    h2 { font-size: 12px; margin: 18px 0 7px; color: #166534; border-bottom: 2px solid #16a34a; padding-bottom: 3px; }
+    .meta { color: #555; font-size: 10px; margin-bottom: 14px; }
+    .kpis { display: flex; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+    .kpi { border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 14px; }
+    .kpi .val { font-size: 18px; font-weight: bold; color: #14532d; }
+    .kpi .lbl { font-size: 9px; color: #6b7280; margin-top: 1px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+    th { background: #14532d; color: white; padding: 4px 6px; text-align: left; font-size: 9px; }
+    td { padding: 3px 6px; border-bottom: 1px solid #e5e7eb; font-size: 9px; }
+    .num { text-align: right; }
+    @media print { body { margin: 10px; } }
+  </style></head><body>
+  <h1>${esc(campo.nombre)}</h1>
+  <div class="meta">${esc(orgNombre)} · Campaña ${esc(campo.campana)} · Generado: ${new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+  <div class="kpis">
+    <div class="kpi"><div class="val">${totalHa.toFixed(1)} ha</div><div class="lbl">Superficie total</div></div>
+    <div class="kpi"><div class="val">${campo.lotes.length}</div><div class="lbl">Lotes</div></div>
+    <div class="kpi"><div class="val">${regs.length}</div><div class="lbl">Registros</div></div>
+    <div class="kpi"><div class="val">$${totalPesos.toFixed(2)}</div><div class="lbl">Total registrado</div></div>
+  </div>
+  <h2>Lotes</h2>
+  <table><thead><tr><th>Lote</th><th>Cultivo</th><th class="num">Ha</th><th>Inversor</th></tr></thead>
+  <tbody>${lotesRows}</tbody></table>
+  <h2>Registros</h2>
+  <table><thead><tr><th>Fecha</th><th>Lote(s)</th><th class="num">Ha</th><th>Cultivo</th><th>Contratista</th><th>Categoría</th><th>Insumo / Trabajo</th><th>Remito</th><th>OT</th><th>Inversor</th><th class="num">$ total</th><th class="num">$/ha</th></tr></thead>
+  <tbody>${regRows}</tbody></table>
+  <script>window.onload=()=>{window.print();}<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
 function exportarExcel() {
   const campo = getCampo(st.campoId);
   if (!campo) return;
@@ -3167,6 +3260,99 @@ function exportarExcel() {
 }
 
 // ─── EXPORTAR PLAN DE SIEMBRA ────────────────────────────────────────
+function imprimirPlanSiembra() {
+  if (!db.campos.length) { alert('No hay datos para imprimir.'); return; }
+  const { byInv, allLotes, totalHa, totalLotes, camposFiltrados } = _buildPlanData();
+  const orgs = orgsLoad() || [];
+  const orgNombre = orgs.find(o => o.id === st.orgId)?.nombre || 'TA-Agrowillem';
+
+  // Resumen por cultivo
+  const byCultivo = {};
+  allLotes.forEach(({ lote, campoNombre }) => {
+    const addC = (c) => {
+      if (!byCultivo[c]) byCultivo[c] = { ha: 0, lotes: 0, campos: new Set() };
+      byCultivo[c].ha += lote.superficie || 0;
+      byCultivo[c].lotes++;
+      byCultivo[c].campos.add(campoNombre);
+    };
+    addC(lote.cultivo || '(sin cultivo)');
+    if (lote.cultivo2) addC(lote.cultivo2);
+  });
+
+  let cultivoRows = '';
+  Object.entries(byCultivo).sort((a,b)=>b[1].ha-a[1].ha).forEach(([cult, v]) => {
+    const pct = totalHa > 0 ? (v.ha/totalHa*100).toFixed(1) : 0;
+    cultivoRows += `<tr>
+      <td>${esc(cult)}</td>
+      <td class="num">${v.lotes}</td>
+      <td class="num"><strong>${v.ha.toFixed(1)}</strong></td>
+      <td class="num">${pct}%</td>
+      <td>${esc([...v.campos].join(', '))}</td>
+    </tr>`;
+  });
+
+  // Todos los lotes agrupados por inversor
+  let invRows = '';
+  Object.keys(byInv).sort().forEach(inv => {
+    const invHa = byInv[inv].reduce((s,e)=>s+e.lotes.reduce((ss,l)=>ss+(l.superficie||0),0),0);
+    invRows += `<tr class="inv-header-row"><td colspan="5">👤 ${esc(inv)} — ${invHa.toFixed(1)} ha</td></tr>`;
+    byInv[inv].sort((a,b)=>a.campoNombre.localeCompare(b.campoNombre)).forEach(entry => {
+      const haEntry = entry.lotes.reduce((s,l)=>s+(l.superficie||0),0);
+      entry.lotes.sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(lote => {
+        const cultivo = lote.cultivo2 ? `${lote.cultivo} + ${lote.cultivo2}` : (lote.cultivo || '—');
+        invRows += `<tr>
+          <td>${esc(entry.campoNombre)}</td>
+          <td>${esc(entry.campana)}</td>
+          <td>${esc(lote.nombre)}</td>
+          <td>${esc(cultivo)}</td>
+          <td class="num">${(lote.superficie||0).toFixed(1)}</td>
+        </tr>`;
+      });
+      invRows += `<tr class="subtotal"><td colspan="4">Subtotal ${esc(entry.campoNombre)}</td><td class="num">${haEntry.toFixed(1)}</td></tr>`;
+    });
+    invRows += `<tr class="inv-total"><td colspan="4">Total ${esc(inv)}</td><td class="num"><strong>${invHa.toFixed(1)}</strong></td></tr>`;
+  });
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+  <title>Plan de siembra — ${esc(orgNombre)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }
+    h1 { font-size: 16px; margin: 0 0 2px; color: #14532d; }
+    h2 { font-size: 13px; margin: 20px 0 8px; color: #166534; border-bottom: 2px solid #16a34a; padding-bottom: 4px; }
+    .meta { color: #555; font-size: 10px; margin-bottom: 18px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    th { background: #14532d; color: white; padding: 5px 8px; text-align: left; font-size: 10px; }
+    td { padding: 4px 8px; border-bottom: 1px solid #e5e7eb; font-size: 10px; }
+    .num { text-align: right; }
+    .subtotal td { background: #f1f5f9; font-weight: bold; border-top: 1px solid #cbd5e1; }
+    .inv-header-row td { background: #dcfce7; font-weight: bold; font-size: 11px; padding: 6px 8px; border-top: 2px solid #16a34a; }
+    .inv-total td { background: #f0fdf4; font-weight: bold; border-top: 1px solid #86efac; }
+    .kpis { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+    .kpi { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 16px; min-width: 100px; }
+    .kpi .val { font-size: 20px; font-weight: bold; color: #14532d; }
+    .kpi .lbl { font-size: 9px; color: #6b7280; margin-top: 2px; }
+    @media print { body { margin: 10px; } }
+  </style></head><body>
+  <h1>Plan de siembra</h1>
+  <div class="meta">${esc(orgNombre)} · Campaña: ${esc(st.planCampana)} · Generado: ${new Date().toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+  <div class="kpis">
+    <div class="kpi"><div class="val">${totalHa.toFixed(1)} ha</div><div class="lbl">Superficie total</div></div>
+    <div class="kpi"><div class="val">${totalLotes}</div><div class="lbl">Lotes</div></div>
+    <div class="kpi"><div class="val">${Object.keys(byInv).length}</div><div class="lbl">Inversores</div></div>
+    <div class="kpi"><div class="val">${Object.keys(byCultivo).length}</div><div class="lbl">Cultivos</div></div>
+  </div>
+  <h2>Resumen por cultivo</h2>
+  <table><thead><tr><th>Cultivo</th><th class="num">Lotes</th><th class="num">Ha totales</th><th class="num">% del plan</th><th>Campos</th></tr></thead>
+  <tbody>${cultivoRows}</tbody></table>
+  <h2>Detalle por inversor</h2>
+  <table><thead><tr><th>Campo</th><th>Campaña</th><th>Lote</th><th>Cultivo</th><th class="num">Ha</th></tr></thead>
+  <tbody>${invRows}</tbody></table>
+  <script>window.onload=()=>{window.print();}<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
 function exportarPlanSiembra() {
   if (typeof XLSX === 'undefined') {
     alert('La librería de Excel no está disponible.\nVerificá tu conexión a internet y recargá la página.');
