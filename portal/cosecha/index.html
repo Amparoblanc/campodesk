@@ -2347,56 +2347,41 @@ function renderSilos(){
 function renderLotes(){
   const cams=getCams();
   const campos=getCampos();
+  const camposDeEstaCoasecha=new Set(campos.map(c=>c.id));
 
-  // Build campo filter chips — campos with camiones with lote OR entradas with lote
-  const entradasConLote=(S.entradas||[]).filter(e=>e.lote&&e.lote.trim());
-  const silosConLoteEnEntrada=[...new Set(entradasConLote.map(e=>{
-    const silo=(S.silobolsas||[]).find(s=>s.id===e.siloId);
-    return silo?.campo;
-  }).filter(Boolean))];
-
-  const camposConLotes=[...new Set([
-    ...cams.filter(c=>c.lote&&c.lote.trim()).map(c=>c.campo),
-    ...(S.silobolsas||[]).filter(s=>s.hid===S.activeId&&s.lote).map(s=>s.campo),
-    ...silosConLoteEnEntrada,
-  ])];
-
-  document.getElementById('lotes-campo-chips').innerHTML=
-    ['todos',...camposConLotes].map(id=>{
-      const label=id==='todos'?'Todos':campos.find(c=>c.id===id)?.nombre||id;
-      const active=(!S._lotesF&&id==='todos')||S._lotesF===id;
-      return `<div class="pill${active?' active':''}" onclick="S._lotesF='${id}';renderLotes()">${label}</div>`;
-    }).join('');
-
-  // Group camiones by campo → lote
+  // Group camiones by campo → lote (solo los de esta cosecha)
   const byField={};
-  cams.filter(c=>c.lote&&c.lote.trim()).forEach(c=>{
+  cams.filter(c=>c.lote&&c.lote.trim()&&camposDeEstaCoasecha.has(c.campo)).forEach(c=>{
     if(!byField[c.campo])byField[c.campo]={};
     const lote=c.lote.trim();
     if(!byField[c.campo][lote])byField[c.campo][lote]=[];
     byField[c.campo][lote].push(c);
   });
 
-  // Build byField from entradas con lote también
+  // Agregar campos con entradas de silobolsas con lote (solo de esta cosecha)
   const camposConSiloLotes=[...new Set(
     (S.entradas||[]).filter(e=>e.lote&&e.lote.trim()).map(e=>{
       const silo=(S.silobolsas||[]).find(s=>s.id===e.siloId&&s.hid===S.activeId);
       return silo?.campo;
-    }).filter(Boolean)
+    }).filter(id=>id&&camposDeEstaCoasecha.has(id))
   )];
-  // Add campos that have silo entradas with lote but no camiones with lote
-  camposConSiloLotes.forEach(campoId=>{
-    if(!byField[campoId]) byField[campoId]={};
-  });
+  camposConSiloLotes.forEach(campoId=>{ if(!byField[campoId]) byField[campoId]={}; });
 
-  // Filter
-  const filtrados=(!S._lotesF||S._lotesF==='todos')
-    ? Object.entries(byField)
-    : Object.entries(byField).filter(([id])=>id===S._lotesF);
+  // Chips = solo campos con datos reales en esta cosecha
+  const camposConDatos=Object.keys(byField);
+  document.getElementById('lotes-campo-chips').innerHTML=
+    ['todos',...camposConDatos].map(id=>{
+      const label=id==='todos'?'Todos':campos.find(c=>c.id===id)?.nombre||id;
+      const active=(!S._lotesF&&id==='todos')||S._lotesF===id;
+      return `<div class="pill${active?' active':''}" onclick="S._lotesF='${id}';renderLotes()">${label}</div>`;
+    }).join('');
+
+  const camposFiltrados=(!S._lotesF||S._lotesF==='todos')
+    ? camposConDatos.map(id=>campos.find(c=>c.id===id)).filter(Boolean)
+    : campos.filter(c=>c.id===S._lotesF&&byField[c.id]);
 
   const cont=document.getElementById('lotes-content');
-
-  if(!filtrados.length){
+  if(!camposFiltrados.length){
     cont.innerHTML=`<div class="empty"><div class="empty-icon">🗺</div>
       <p>Cargá camiones con número de lote para ver el rendimiento por lote<br>
       <span style="font-size:11px;color:var(--muted)">El campo Lote es texto libre en el formulario de camión</span></p></div>`;
@@ -2409,8 +2394,9 @@ function renderLotes(){
 
   let html='';
 
-  filtrados.forEach(([campoId,loteMap])=>{
-    const campo=campos.find(c=>c.id===campoId);
+  camposFiltrados.forEach(campo=>{
+    const campoId=campo.id;
+    const loteMap=byField[campoId]||{};
     const lotes=Object.entries(loteMap).sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true}));
 
     // Campo totals
@@ -2436,7 +2422,7 @@ function renderLotes(){
       }
     });
 
-    // All lotes = union of camiones lotes + silobolsas lotes
+    // All lotes = union de camiones lotes + silobolsas lotes
     const allLotes=[...new Set([
       ...Object.keys(loteMap),
       ...Object.keys(silosByLote),
