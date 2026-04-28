@@ -3317,27 +3317,43 @@ function imprimirPlanSiembra() {
   const tab = st.planTab || 'dashboard';
   const fecha = new Date().toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
   const baseStyle = `
-    body{font-family:Arial,sans-serif;font-size:11px;color:#111;margin:20px}
-    h1{font-size:16px;margin:0 0 2px;color:#14532d}
-    h2{font-size:13px;margin:18px 0 7px;color:#166534;border-bottom:2px solid #16a34a;padding-bottom:3px}
-    .meta{color:#555;font-size:10px;margin-bottom:14px}
-    table{width:100%;border-collapse:collapse;margin-bottom:8px}
-    th{background:#14532d;color:white;padding:5px 8px;text-align:left;font-size:10px}
-    td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:10px}
-    .num{text-align:right}
-    .subtotal td{background:#f1f5f9;font-weight:bold;border-top:1px solid #cbd5e1}
-    .inv-header-row td{background:#052e16;color:white;font-weight:bold;font-size:11px;padding:6px 8px;border-top:3px solid #14532d}
-    .inv-total td{background:#dcfce7;font-weight:bold;border-top:2px solid #86efac;color:#14532d}
-    .kpis{display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap}
-    .kpi{border:1px solid #e5e7eb;border-radius:6px;padding:8px 14px}
-    .kpi .val{font-size:18px;font-weight:bold;color:#14532d}
-    .kpi .lbl{font-size:9px;color:#6b7280;margin-top:1px}
-    @media print{body{margin:8px} @page{margin:10mm}}`;
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#18223a;background:#f0f3f9;padding:16px}
+    .top{margin-bottom:14px}
+    h1{font-size:17px;font-weight:700;color:#18223a;margin-bottom:2px}
+    .meta{font-size:10px;color:#7a8aaa;margin-bottom:12px}
+    .kpis{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+    .kpi{background:#fff;border:1px solid #d8dff0;border-radius:10px;padding:8px 16px}
+    .kpi .val{font-size:17px;font-weight:700;color:#14532d}
+    .kpi .lbl{font-size:9px;color:#7a8aaa;margin-top:1px;text-transform:uppercase;letter-spacing:.05em}
+    .inv-block{margin-bottom:14px;border-radius:12px;overflow:hidden;border:1px solid #d8dff0;break-inside:avoid}
+    .inv-hdr{background:#052e16;color:white;padding:10px 16px}
+    .inv-hdr-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+    .inv-name{font-size:14px;font-weight:700}
+    .inv-badge{background:#14532d;color:#4ade80;font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;margin-left:8px}
+    .inv-ha{font-size:14px;font-weight:700;color:#4ade80}
+    .inv-pills{display:flex;flex-wrap:wrap;gap:5px}
+    .pill-cult{background:rgba(255,255,255,0.12);color:#bbf7d0;border:1px solid rgba(255,255,255,0.2);font-size:9px;font-weight:600;padding:2px 8px;border-radius:99px}
+    .campo-row{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;border-bottom:1px solid #e5e7eb;background:#fff}
+    .campo-row:last-child{border-bottom:none}
+    .campo-name{font-weight:700;font-size:12px;color:#1e3a2e}
+    .campo-camp{font-size:10px;color:#7a8aaa;margin-left:6px}
+    .campo-cults{font-size:10px;color:#3d4e72;margin-top:2px}
+    .campo-right{text-align:right;flex-shrink:0;margin-left:12px}
+    .campo-ha{font-weight:700;font-size:12px;color:#14532d}
+    .campo-lotes{font-size:10px;color:#7a8aaa}
+    .lotes-tbl{width:100%;border-collapse:collapse;font-size:10px;background:#f9fafb}
+    .lotes-tbl th{background:#dcfce7;color:#14532d;padding:4px 12px;text-align:left;font-size:9px;font-weight:600;letter-spacing:.05em;border-bottom:1px solid #d8dff0}
+    .lotes-tbl th.r{text-align:right}
+    .lotes-tbl td{padding:4px 12px;border-bottom:1px solid #e5e7eb;color:#374151}
+    .lotes-tbl td.r{text-align:right;font-weight:600;color:#14532d}
+    .lotes-tbl tr:last-child td{border-bottom:none}
+    @media print{body{background:white;padding:8px} @page{margin:10mm} .inv-block{break-inside:avoid}}`;
 
   let body = '';
 
   if (tab === 'inversores') {
-    let invRows2 = '';
+    let blocksHtml = '';
     Object.keys(byInv).sort().forEach(inv => {
       const entries = byInv[inv];
       const invHa = entries.reduce((s,e)=>s+e.lotes.reduce((ss,l)=>ss+(l.superficie||0),0),0);
@@ -3347,25 +3363,55 @@ function imprimirPlanSiembra() {
         byCultivoInv[l.cultivo||'—']=(byCultivoInv[l.cultivo||'—']||0)+(l.superficie||0);
         if(l.cultivo2) byCultivoInv[l.cultivo2]=(byCultivoInv[l.cultivo2]||0)+(l.superficie||0);
       }));
-      const cultivosStr = Object.entries(byCultivoInv).sort((a,b)=>b[1]-a[1]).map(([c,h])=>`${c} ${h.toFixed(1)} ha`).join(' · ');
-      invRows2 += `<tr class="inv-header-row"><td colspan="4">👤 ${esc(inv)}</td><td class="num">${esc(cultivosStr)}</td><td class="num">${invHa.toFixed(1)} ha · ${invLotes} lotes</td></tr>`;
+      const pills = Object.entries(byCultivoInv).sort((a,b)=>b[1]-a[1])
+        .map(([c,h])=>`<span class="pill-cult">${esc(c)} · ${h.toFixed(1)} ha</span>`).join('');
+
+      let camposHtml = '';
       entries.sort((a,b)=>a.campoNombre.localeCompare(b.campoNombre)).forEach(entry => {
         const haEntry = entry.lotes.reduce((s,l)=>s+(l.superficie||0),0);
+        const cultivosCampo = [...new Set(entry.lotes.flatMap(l=>[l.cultivo,l.cultivo2].filter(Boolean)))].join(', ');
+        let lotesRows = '';
         entry.lotes.sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(lote => {
-          const cultivo = lote.cultivo2 ? `${lote.cultivo} + ${lote.cultivo2}` : (lote.cultivo||'—');
-          invRows2 += `<tr><td>${esc(entry.campoNombre)}</td><td>${esc(entry.campana)}</td><td>${esc(lote.nombre)}</td><td>${esc(cultivo)}</td><td class="num">${esc(lote.inversor||'—')}</td><td class="num">${(lote.superficie||0).toFixed(1)}</td></tr>`;
+          const cultivo = lote.cultivo2 ? `${esc(lote.cultivo)} <span style="color:#7a8aaa">+</span> ${esc(lote.cultivo2)}` : esc(lote.cultivo||'—');
+          const invLote = lote.inversor ? `<span style="color:#4f46e5;font-size:9px">${esc(lote.inversor)}</span>` : '<span style="color:#9ca3af">—</span>';
+          lotesRows += `<tr><td>${esc(lote.nombre)}</td><td>${cultivo}</td><td>${invLote}</td><td class="r">${(lote.superficie||0).toFixed(1)}</td></tr>`;
         });
-        invRows2 += `<tr class="subtotal"><td colspan="5">Subtotal ${esc(entry.campoNombre)}</td><td class="num">${haEntry.toFixed(1)}</td></tr>`;
+        camposHtml += `
+          <div class="campo-row">
+            <div>
+              <span class="campo-name">${esc(entry.campoNombre)}</span>
+              <span class="campo-camp">${esc(entry.campana)}</span>
+              <div class="campo-cults">${esc(cultivosCampo)}</div>
+            </div>
+            <div class="campo-right">
+              <div class="campo-ha">${haEntry.toFixed(1)} ha</div>
+              <div class="campo-lotes">${entry.lotes.length} lote${entry.lotes.length!==1?'s':''}</div>
+            </div>
+          </div>
+          <table class="lotes-tbl">
+            <thead><tr><th>Lote</th><th>Cultivo</th><th>Inv. lote</th><th class="r">Ha</th></tr></thead>
+            <tbody>${lotesRows}</tbody>
+          </table>`;
       });
-      invRows2 += `<tr class="inv-total"><td colspan="5">TOTAL ${esc(inv)}</td><td class="num">${invHa.toFixed(1)}</td></tr>`;
+
+      blocksHtml += `<div class="inv-block">
+        <div class="inv-hdr">
+          <div class="inv-hdr-top">
+            <div><span style="font-size:13px">👤</span> <span class="inv-name">${esc(inv)}</span><span class="inv-badge">${invLotes} lotes</span></div>
+            <span class="inv-ha">${invHa.toFixed(1)} ha</span>
+          </div>
+          <div class="inv-pills">${pills}</div>
+        </div>
+        ${camposHtml}
+      </div>`;
     });
+
     body = `<div class="kpis">
       <div class="kpi"><div class="val">${totalHa.toFixed(1)} ha</div><div class="lbl">Superficie total</div></div>
       <div class="kpi"><div class="val">${totalLotes}</div><div class="lbl">Lotes</div></div>
       <div class="kpi"><div class="val">${Object.keys(byInv).length}</div><div class="lbl">Inversores</div></div>
     </div>
-    <table><thead><tr><th>Campo</th><th>Campaña</th><th>Lote</th><th>Cultivo</th><th class="num">Inv. lote</th><th class="num">Ha</th></tr></thead>
-    <tbody>${invRows2}</tbody></table>`;
+    ${blocksHtml}`;
   } else {
     // dashboard — resumen por cultivo + todos los lotes
     let cultivoRows2 = '';
