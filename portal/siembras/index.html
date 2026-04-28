@@ -3475,7 +3475,7 @@ async function respaldarCampana() {
 
   // Año para el nombre de archivo: tomar el segundo año de "2026/2027" → "2027"
   const yearMatch = campana.match(/(\d{4})\s*[\/\-]\s*(\d{4})/);
-  const yearLabel = yearMatch ? yearMatch[2] : campana.replace(/[^0-9]/g,'').slice(-4) || campana;
+  const yearLabel = yearMatch ? yearMatch[1] : campana.replace(/[^0-9]/g,'').slice(0,4) || campana;
 
   // Mostrar progreso en el botón
   const btn = document.getElementById('btn-respaldo');
