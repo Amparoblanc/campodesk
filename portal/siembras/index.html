@@ -6,6 +6,7 @@
   <title>Siembras TA-Agrowillem</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -436,6 +437,10 @@
             <p class="text-xs text-gray-400 mt-0.5">Cultivos por lote, por inversor y campo</p>
           </div>
           <div class="flex items-center gap-2 flex-shrink-0">
+            <button onclick="respaldarCampana()" id="btn-respaldo"
+              class="bg-emerald-700 hover:bg-emerald-600 text-white text-sm px-3 py-2 rounded-xl font-medium flex items-center gap-1.5">
+              💾 Respaldo
+            </button>
             <button onclick="imprimirPlanSiembra()"
               class="bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-xl font-medium flex items-center gap-1.5">
               🖨 PDF
@@ -3454,6 +3459,116 @@ function imprimirPlanSiembra() {
   <script>window.onload=()=>{window.print();}<\/script>
   </body></html>`);
   win.document.close();
+}
+
+// ─── RESPALDO CAMPAÑA (ZIP con un Excel por campo) ────────────────────────────
+async function respaldarCampana() {
+  if (typeof XLSX === 'undefined') { alert('La librería de Excel no está disponible. Verificá tu conexión.'); return; }
+  if (typeof JSZip === 'undefined') { alert('La librería de compresión no está disponible. Verificá tu conexión.'); return; }
+
+  const campana = st.planCampana;
+  const campos = db.campos
+    .filter(c => normalizaCampana(c.campana) === campana)
+    .sort((a,b) => a.nombre.localeCompare(b.nombre));
+
+  if (!campos.length) { alert('No hay campos en la campaña ' + campana); return; }
+
+  // Año para el nombre de archivo: tomar el segundo año de "2026/2027" → "2027"
+  const yearMatch = campana.match(/(\d{4})\s*[\/\-]\s*(\d{4})/);
+  const yearLabel = yearMatch ? yearMatch[2] : campana.replace(/[^0-9]/g,'').slice(-4) || campana;
+
+  // Mostrar progreso en el botón
+  const btn = document.getElementById('btn-respaldo');
+  const origText = btn.innerHTML;
+  let procesados = 0;
+  const total = campos.length;
+  const setProgress = (n) => { btn.innerHTML = `⏳ ${n}/${total}`; btn.disabled = true; };
+  setProgress(0);
+
+  try {
+    const zip = new JSZip();
+    const folder = zip.folder(`Siembras ${yearLabel}`);
+
+    for (const campo of campos) {
+      setProgress(++procesados);
+      const regs = getReg(campo.id);
+
+      const wb = XLSX.utils.book_new();
+
+      // ── Hoja principal de registros ──
+      const headers = ['Fecha','Lote','Superficie','Cultivo','Contratista','Categoría',
+        'Insumo/Trabajo','Unidad','Dosis','Salida','Salida real','Devolución',
+        'Remito','OT','Inversor','Factura','$ unitario (USD)','$ total','USD/HA'];
+
+      const rows = regs
+        .slice()
+        .sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.loteName.localeCompare(b.loteName))
+        .map(r=>[
+          fmtDate(r.fecha), r.loteName, r.superficie, r.cultivo,
+          r.contratista||'', r.categoria, r.insumo||'', r.unidad||'', r.dosis||0,
+          r.salida||0, r.salidaReal||0, r.devolucion||0,
+          r.remito||'', r.ot||'', r.inversor||'', r.factura||'',
+          r.precioUnitario||0, r.total||0, r.usdha||0
+        ]);
+
+      const shName = campo.nombre.replace(/[:\\\/\?\*\[\]]/g,'-').slice(0,31);
+      const ws1 = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws1['!cols'] = [{wch:12},{wch:14},{wch:10},{wch:16},{wch:16},{wch:14},
+        {wch:22},{wch:8},{wch:8},{wch:10},{wch:10},{wch:10},
+        {wch:14},{wch:8},{wch:16},{wch:14},{wch:16},{wch:12},{wch:10}];
+      XLSX.utils.book_append_sheet(wb, ws1, shName);
+
+      // ── Hoja costos por lote (solo si hay registros) ──
+      if (regs.length) {
+        const costos = [['Lote','Categoría','Suma de $ total','USD/HA']];
+        const loteMap = {};
+        regs.forEach(r=>{
+          if(!loteMap[r.loteId]) loteMap[r.loteId]={nombre:r.loteName,superficie:r.superficie,cats:{}};
+          loteMap[r.loteId].cats[r.categoria]=(loteMap[r.loteId].cats[r.categoria]||0)+(r.total||0);
+        });
+        Object.values(loteMap).sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(lote=>{
+          let tot=0;
+          Object.entries(lote.cats).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([cat,val])=>{
+            costos.push([lote.nombre, cat, round4(val), lote.superficie>0?round4(val/lote.superficie):0]);
+            tot+=val;
+          });
+          costos.push([`Total ${lote.nombre}`,'',round4(tot),lote.superficie>0?round4(tot/lote.superficie):0]);
+          costos.push(['','','','']);
+        });
+        const ws2 = XLSX.utils.aoa_to_sheet(costos);
+        ws2['!cols']=[{wch:22},{wch:16},{wch:18},{wch:12}];
+        XLSX.utils.book_append_sheet(wb, ws2, 'Costos por lote');
+      }
+
+      // Convertir workbook a ArrayBuffer y agregar al zip
+      const buf = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+      const fileName = `${campo.nombre} ${yearLabel}.xlsx`;
+      folder.file(fileName, buf);
+
+      // Pequeña pausa para no bloquear la UI en campañas grandes
+      await new Promise(r => setTimeout(r, 10));
+    }
+
+    // Generar y descargar el ZIP
+    const blob = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{ level:6 } });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Siembras ${yearLabel}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    // Restore button
+    btn.innerHTML = '✅ Listo';
+    btn.disabled = false;
+    setTimeout(() => { btn.innerHTML = origText; }, 2500);
+
+  } catch(e) {
+    btn.innerHTML = origText;
+    btn.disabled = false;
+    alert('Error al generar el respaldo: ' + e.message);
+    console.error(e);
+  }
 }
 
 function exportarPlanSiembra() {
