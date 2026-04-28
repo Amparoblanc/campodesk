@@ -3125,7 +3125,7 @@ function imprimirCampo() {
     lotesRows += `<tr><td>${esc(l.nombre)}</td><td>${esc(cult)}</td><td class="num">${(l.superficie||0).toFixed(1)}</td><td>${esc(l.inversor||campo.inversor||'—')}</td></tr>`;
   });
 
-  // Registros agrupados por fecha/aplicacion
+  // Registros — aplicaciones expandidas con detalle por insumo
   const seen = new Set();
   let regRows = '';
   regs.forEach(r => {
@@ -3135,24 +3135,60 @@ function imprimirCampo() {
     const grupo = r.aplicacionId ? regs.filter(x=>x.aplicacionId===r.aplicacionId) : [r];
     const lotes = [...new Set(grupo.map(x=>x.loteName))].join(', ');
     const cats  = [...new Set(grupo.map(x=>x.categoria))].join(', ');
-    const insumos = [...new Set(grupo.map(x=>x.insumo).filter(Boolean))].join(', ');
     const sup   = [...new Set(grupo.map(x=>x.loteId))].reduce((s,lid)=>{ const x=grupo.find(y=>y.loteId===lid); return s+(x?x.superficie:0);},0);
     const total = grupo.reduce((s,x)=>s+x.total,0);
     const usdha = sup>0 ? round2(total/sup) : 0;
-    regRows += `<tr>
-      <td>${fmtDate(r.fecha)}</td>
-      <td>${esc(lotes)}</td>
-      <td class="num">${sup||''}</td>
-      <td>${esc([...new Set(grupo.map(x=>x.cultivo))].join(', '))}</td>
-      <td>${esc([...new Set(grupo.map(x=>x.contratista))].join(', '))}</td>
-      <td>${esc(cats)}</td>
-      <td>${esc(insumos)}</td>
-      <td>${esc(r.remito||'')}</td>
-      <td>${esc(r.ot||'')}</td>
-      <td>${esc([...new Set(grupo.map(x=>x.inversor))].join(', '))}</td>
-      <td class="num">${total?'$'+total.toFixed(2):''}</td>
-      <td class="num">${usdha||''}</td>
-    </tr>`;
+
+    if (grupo.length === 1) {
+      // Registro simple — una sola fila
+      const x = grupo[0];
+      regRows += `<tr>
+        <td>${fmtDate(x.fecha)}</td>
+        <td>${esc(x.loteName)}</td>
+        <td class="num">${x.superficie||''}</td>
+        <td>${esc(x.cultivo||'')}</td>
+        <td>${esc(x.contratista||'')}</td>
+        <td>${esc(x.categoria||'')}</td>
+        <td>${esc(x.insumo||'')}</td>
+        <td class="num">${x.dosis||''}</td>
+        <td>${esc(x.unidad||'')}</td>
+        <td>${esc(x.remito||'')}</td>
+        <td>${esc(x.ot||'')}</td>
+        <td>${esc(x.inversor||'')}</td>
+        <td class="num">${x.total?'$'+x.total.toFixed(2):''}</td>
+        <td class="num">${usdha||''}</td>
+      </tr>`;
+    } else {
+      // Aplicación multi-producto — cabecera + detalle expandido
+      regRows += `<tr class="aplic-hdr">
+        <td>${fmtDate(r.fecha)}</td>
+        <td>${esc(lotes)}</td>
+        <td class="num">${sup||''}</td>
+        <td>${esc([...new Set(grupo.map(x=>x.cultivo))].join(', '))}</td>
+        <td>${esc([...new Set(grupo.map(x=>x.contratista))].join(', '))}</td>
+        <td>${esc(cats)}</td>
+        <td colspan="3" style="color:#6b7280;font-style:italic">${grupo.length} productos</td>
+        <td>${esc(r.remito||'')}</td>
+        <td>${esc(r.ot||'')}</td>
+        <td>${esc([...new Set(grupo.map(x=>x.inversor))].join(', '))}</td>
+        <td class="num">${total?'$'+total.toFixed(2):''}</td>
+        <td class="num">${usdha||''}</td>
+      </tr>`;
+      grupo.forEach(x => {
+        regRows += `<tr class="aplic-det">
+          <td></td>
+          <td colspan="5" style="padding-left:18px;color:#374151">↳ ${esc(x.loteName)}</td>
+          <td>${esc(x.insumo||'')}</td>
+          <td class="num">${x.dosis||''}</td>
+          <td>${esc(x.unidad||'')}</td>
+          <td>${esc(x.salida||'')}</td>
+          <td></td>
+          <td></td>
+          <td class="num">${x.total?'$'+x.total.toFixed(2):''}</td>
+          <td></td>
+        </tr>`;
+      });
+    }
   });
 
   const win = window.open('', '_blank');
@@ -3171,7 +3207,9 @@ function imprimirCampo() {
     th { background: #14532d; color: white; padding: 4px 6px; text-align: left; font-size: 9px; }
     td { padding: 3px 6px; border-bottom: 1px solid #e5e7eb; font-size: 9px; }
     .num { text-align: right; }
-    @media print { body { margin: 10px; } }
+    .aplic-hdr td { background: #f0fdf4; font-weight: 600; border-top: 2px solid #16a34a; }
+    .aplic-det td { background: #fafafa; color: #374151; }
+    @media print { body { margin: 8px; } @page { size: A4 landscape; margin: 10mm; } }
   </style></head><body>
   <h1>${esc(campo.nombre)}</h1>
   <div class="meta">${esc(orgNombre)} · Campaña ${esc(campo.campana)} · Generado: ${new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
@@ -3185,7 +3223,7 @@ function imprimirCampo() {
   <table><thead><tr><th>Lote</th><th>Cultivo</th><th class="num">Ha</th><th>Inversor</th></tr></thead>
   <tbody>${lotesRows}</tbody></table>
   <h2>Registros</h2>
-  <table><thead><tr><th>Fecha</th><th>Lote(s)</th><th class="num">Ha</th><th>Cultivo</th><th>Contratista</th><th>Categoría</th><th>Insumo / Trabajo</th><th>Remito</th><th>OT</th><th>Inversor</th><th class="num">$ total</th><th class="num">$/ha</th></tr></thead>
+  <table><thead><tr><th>Fecha</th><th>Lote(s)</th><th class="num">Ha</th><th>Cultivo</th><th>Contratista</th><th>Categoría</th><th>Insumo / Trabajo</th><th class="num">Dosis</th><th>Unid.</th><th>Remito/Sal.</th><th>OT</th><th>Inversor</th><th class="num">$ total</th><th class="num">$/ha</th></tr></thead>
   <tbody>${regRows}</tbody></table>
   <script>window.onload=()=>{window.print();}<\/script>
   </body></html>`);
@@ -3264,88 +3302,109 @@ function imprimirPlanSiembra() {
   const orgs = orgsLoad() || [];
   const orgNombre = orgs.find(o => o.id === st.orgId)?.nombre || 'TA-Agrowillem';
 
-  // Resumen por cultivo
+  // Resumen por cultivo (usado en tab dashboard)
   const byCultivo = {};
   allLotes.forEach(({ lote, campoNombre }) => {
     const addC = (c) => {
       if (!byCultivo[c]) byCultivo[c] = { ha: 0, lotes: 0, campos: new Set() };
-      byCultivo[c].ha += lote.superficie || 0;
-      byCultivo[c].lotes++;
+      byCultivo[c].ha += lote.superficie || 0; byCultivo[c].lotes++;
       byCultivo[c].campos.add(campoNombre);
     };
     addC(lote.cultivo || '(sin cultivo)');
     if (lote.cultivo2) addC(lote.cultivo2);
   });
 
-  let cultivoRows = '';
-  Object.entries(byCultivo).sort((a,b)=>b[1].ha-a[1].ha).forEach(([cult, v]) => {
-    const pct = totalHa > 0 ? (v.ha/totalHa*100).toFixed(1) : 0;
-    cultivoRows += `<tr>
-      <td>${esc(cult)}</td>
-      <td class="num">${v.lotes}</td>
-      <td class="num"><strong>${v.ha.toFixed(1)}</strong></td>
-      <td class="num">${pct}%</td>
-      <td>${esc([...v.campos].join(', '))}</td>
-    </tr>`;
-  });
+  const tab = st.planTab || 'dashboard';
+  const fecha = new Date().toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const baseStyle = `
+    body{font-family:Arial,sans-serif;font-size:11px;color:#111;margin:20px}
+    h1{font-size:16px;margin:0 0 2px;color:#14532d}
+    h2{font-size:13px;margin:18px 0 7px;color:#166534;border-bottom:2px solid #16a34a;padding-bottom:3px}
+    .meta{color:#555;font-size:10px;margin-bottom:14px}
+    table{width:100%;border-collapse:collapse;margin-bottom:8px}
+    th{background:#14532d;color:white;padding:5px 8px;text-align:left;font-size:10px}
+    td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:10px}
+    .num{text-align:right}
+    .subtotal td{background:#f1f5f9;font-weight:bold;border-top:1px solid #cbd5e1}
+    .inv-header-row td{background:#052e16;color:white;font-weight:bold;font-size:11px;padding:6px 8px;border-top:3px solid #14532d}
+    .inv-total td{background:#dcfce7;font-weight:bold;border-top:2px solid #86efac;color:#14532d}
+    .kpis{display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+    .kpi{border:1px solid #e5e7eb;border-radius:6px;padding:8px 14px}
+    .kpi .val{font-size:18px;font-weight:bold;color:#14532d}
+    .kpi .lbl{font-size:9px;color:#6b7280;margin-top:1px}
+    @media print{body{margin:8px} @page{margin:10mm}}`;
 
-  // Todos los lotes agrupados por inversor
-  let invRows = '';
-  Object.keys(byInv).sort().forEach(inv => {
-    const invHa = byInv[inv].reduce((s,e)=>s+e.lotes.reduce((ss,l)=>ss+(l.superficie||0),0),0);
-    invRows += `<tr class="inv-header-row"><td colspan="5">👤 ${esc(inv)} — ${invHa.toFixed(1)} ha</td></tr>`;
-    byInv[inv].sort((a,b)=>a.campoNombre.localeCompare(b.campoNombre)).forEach(entry => {
-      const haEntry = entry.lotes.reduce((s,l)=>s+(l.superficie||0),0);
-      entry.lotes.sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(lote => {
-        const cultivo = lote.cultivo2 ? `${lote.cultivo} + ${lote.cultivo2}` : (lote.cultivo || '—');
-        invRows += `<tr>
-          <td>${esc(entry.campoNombre)}</td>
-          <td>${esc(entry.campana)}</td>
-          <td>${esc(lote.nombre)}</td>
-          <td>${esc(cultivo)}</td>
-          <td class="num">${(lote.superficie||0).toFixed(1)}</td>
-        </tr>`;
+  let body = '';
+
+  if (tab === 'inversores') {
+    let invRows2 = '';
+    Object.keys(byInv).sort().forEach(inv => {
+      const entries = byInv[inv];
+      const invHa = entries.reduce((s,e)=>s+e.lotes.reduce((ss,l)=>ss+(l.superficie||0),0),0);
+      const invLotes = entries.reduce((s,e)=>s+e.lotes.length,0);
+      const byCultivoInv = {};
+      entries.forEach(e=>e.lotes.forEach(l=>{
+        byCultivoInv[l.cultivo||'—']=(byCultivoInv[l.cultivo||'—']||0)+(l.superficie||0);
+        if(l.cultivo2) byCultivoInv[l.cultivo2]=(byCultivoInv[l.cultivo2]||0)+(l.superficie||0);
+      }));
+      const cultivosStr = Object.entries(byCultivoInv).sort((a,b)=>b[1]-a[1]).map(([c,h])=>`${c} ${h.toFixed(1)} ha`).join(' · ');
+      invRows2 += `<tr class="inv-header-row"><td colspan="4">👤 ${esc(inv)}</td><td class="num">${esc(cultivosStr)}</td><td class="num">${invHa.toFixed(1)} ha · ${invLotes} lotes</td></tr>`;
+      entries.sort((a,b)=>a.campoNombre.localeCompare(b.campoNombre)).forEach(entry => {
+        const haEntry = entry.lotes.reduce((s,l)=>s+(l.superficie||0),0);
+        entry.lotes.sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(lote => {
+          const cultivo = lote.cultivo2 ? `${lote.cultivo} + ${lote.cultivo2}` : (lote.cultivo||'—');
+          invRows2 += `<tr><td>${esc(entry.campoNombre)}</td><td>${esc(entry.campana)}</td><td>${esc(lote.nombre)}</td><td>${esc(cultivo)}</td><td class="num">${esc(lote.inversor||'—')}</td><td class="num">${(lote.superficie||0).toFixed(1)}</td></tr>`;
+        });
+        invRows2 += `<tr class="subtotal"><td colspan="5">Subtotal ${esc(entry.campoNombre)}</td><td class="num">${haEntry.toFixed(1)}</td></tr>`;
       });
-      invRows += `<tr class="subtotal"><td colspan="4">Subtotal ${esc(entry.campoNombre)}</td><td class="num">${haEntry.toFixed(1)}</td></tr>`;
+      invRows2 += `<tr class="inv-total"><td colspan="5">TOTAL ${esc(inv)}</td><td class="num">${invHa.toFixed(1)}</td></tr>`;
     });
-    invRows += `<tr class="inv-total"><td colspan="4">Total ${esc(inv)}</td><td class="num"><strong>${invHa.toFixed(1)}</strong></td></tr>`;
-  });
+    body = `<div class="kpis">
+      <div class="kpi"><div class="val">${totalHa.toFixed(1)} ha</div><div class="lbl">Superficie total</div></div>
+      <div class="kpi"><div class="val">${totalLotes}</div><div class="lbl">Lotes</div></div>
+      <div class="kpi"><div class="val">${Object.keys(byInv).length}</div><div class="lbl">Inversores</div></div>
+    </div>
+    <table><thead><tr><th>Campo</th><th>Campaña</th><th>Lote</th><th>Cultivo</th><th class="num">Inv. lote</th><th class="num">Ha</th></tr></thead>
+    <tbody>${invRows2}</tbody></table>`;
+  } else {
+    // dashboard — resumen por cultivo + todos los lotes
+    let cultivoRows2 = '';
+    Object.entries(byCultivo).sort((a,b)=>b[1].ha-a[1].ha).forEach(([cult, v]) => {
+      const pct = totalHa > 0 ? (v.ha/totalHa*100).toFixed(1) : 0;
+      cultivoRows2 += `<tr><td>${esc(cult)}</td><td class="num">${v.lotes}</td><td class="num"><strong>${v.ha.toFixed(1)}</strong></td><td class="num">${pct}%</td><td>${esc([...v.campos].join(', '))}</td></tr>`;
+    });
+    let loteRows2 = '';
+    (camposFiltrados||db.campos).slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(campo => {
+      if (!campo.lotes.length) return;
+      const haC = campo.lotes.reduce((s,l)=>s+(l.superficie||0),0);
+      campo.lotes.sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(lote => {
+        const cultivo = lote.cultivo2 ? `${lote.cultivo} + ${lote.cultivo2}` : (lote.cultivo||'—');
+        loteRows2 += `<tr><td>${esc(campo.nombre)}</td><td>${esc(campo.campana||'')}</td><td>${esc(lote.nombre)}</td><td>${esc(cultivo)}</td><td class="num">${(lote.superficie||0).toFixed(1)}</td><td>${esc(lote.inversor||campo.inversor||'—')}</td></tr>`;
+      });
+      loteRows2 += `<tr class="subtotal"><td colspan="4">Subtotal ${esc(campo.nombre)}</td><td class="num">${haC.toFixed(1)}</td><td></td></tr>`;
+    });
+    body = `<div class="kpis">
+      <div class="kpi"><div class="val">${totalHa.toFixed(1)} ha</div><div class="lbl">Superficie total</div></div>
+      <div class="kpi"><div class="val">${totalLotes}</div><div class="lbl">Lotes</div></div>
+      <div class="kpi"><div class="val">${Object.keys(byInv).length}</div><div class="lbl">Inversores</div></div>
+      <div class="kpi"><div class="val">${Object.keys(byCultivo).length}</div><div class="lbl">Cultivos</div></div>
+    </div>
+    <h2>Resumen por cultivo</h2>
+    <table><thead><tr><th>Cultivo</th><th class="num">Lotes</th><th class="num">Ha</th><th class="num">%</th><th>Campos</th></tr></thead>
+    <tbody>${cultivoRows2}</tbody></table>
+    <h2>Todos los lotes</h2>
+    <table><thead><tr><th>Campo</th><th>Campaña</th><th>Lote</th><th>Cultivo</th><th class="num">Ha</th><th>Inversor</th></tr></thead>
+    <tbody>${loteRows2}</tbody></table>`;
+  }
 
+  const tabLabels = {dashboard:'Dashboard', inversores:'Por inversor', historia:'Historia'};
   const win = window.open('', '_blank');
   win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
   <title>Plan de siembra — ${esc(orgNombre)}</title>
-  <style>
-    body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }
-    h1 { font-size: 16px; margin: 0 0 2px; color: #14532d; }
-    h2 { font-size: 13px; margin: 20px 0 8px; color: #166534; border-bottom: 2px solid #16a34a; padding-bottom: 4px; }
-    .meta { color: #555; font-size: 10px; margin-bottom: 18px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-    th { background: #14532d; color: white; padding: 5px 8px; text-align: left; font-size: 10px; }
-    td { padding: 4px 8px; border-bottom: 1px solid #e5e7eb; font-size: 10px; }
-    .num { text-align: right; }
-    .subtotal td { background: #f1f5f9; font-weight: bold; border-top: 1px solid #cbd5e1; }
-    .inv-header-row td { background: #dcfce7; font-weight: bold; font-size: 11px; padding: 6px 8px; border-top: 2px solid #16a34a; }
-    .inv-total td { background: #f0fdf4; font-weight: bold; border-top: 1px solid #86efac; }
-    .kpis { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
-    .kpi { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 16px; min-width: 100px; }
-    .kpi .val { font-size: 20px; font-weight: bold; color: #14532d; }
-    .kpi .lbl { font-size: 9px; color: #6b7280; margin-top: 2px; }
-    @media print { body { margin: 10px; } }
-  </style></head><body>
-  <h1>Plan de siembra</h1>
-  <div class="meta">${esc(orgNombre)} · Campaña: ${esc(st.planCampana)} · Generado: ${new Date().toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
-  <div class="kpis">
-    <div class="kpi"><div class="val">${totalHa.toFixed(1)} ha</div><div class="lbl">Superficie total</div></div>
-    <div class="kpi"><div class="val">${totalLotes}</div><div class="lbl">Lotes</div></div>
-    <div class="kpi"><div class="val">${Object.keys(byInv).length}</div><div class="lbl">Inversores</div></div>
-    <div class="kpi"><div class="val">${Object.keys(byCultivo).length}</div><div class="lbl">Cultivos</div></div>
-  </div>
-  <h2>Resumen por cultivo</h2>
-  <table><thead><tr><th>Cultivo</th><th class="num">Lotes</th><th class="num">Ha totales</th><th class="num">% del plan</th><th>Campos</th></tr></thead>
-  <tbody>${cultivoRows}</tbody></table>
-  <h2>Detalle por inversor</h2>
-  <table><thead><tr><th>Campo</th><th>Campaña</th><th>Lote</th><th>Cultivo</th><th class="num">Ha</th></tr></thead>
-  <tbody>${invRows}</tbody></table>
+  <style>${baseStyle}</style></head><body>
+  <h1>Plan de siembra · ${tabLabels[tab]||tab}</h1>
+  <div class="meta">${esc(orgNombre)} · Campaña: ${esc(st.planCampana)} · ${fecha}</div>
+  ${body}
   <script>window.onload=()=>{window.print();}<\/script>
   </body></html>`);
   win.document.close();
