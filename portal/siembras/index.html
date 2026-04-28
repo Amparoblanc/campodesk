@@ -436,6 +436,10 @@
             <p class="text-xs text-gray-400 mt-0.5">Cultivos por lote, por inversor y campo</p>
           </div>
           <div class="flex items-center gap-2 flex-shrink-0">
+            <button onclick="imprimirResumenInversores()"
+              class="bg-indigo-700 hover:bg-indigo-600 text-white text-sm px-3 py-2 rounded-xl font-medium flex items-center gap-1.5">
+              📋 Inversores
+            </button>
             <button onclick="imprimirPlanSiembra()"
               class="bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-xl font-medium flex items-center gap-1.5">
               🖨 PDF
@@ -3452,6 +3456,137 @@ function imprimirPlanSiembra() {
   <div class="meta">${esc(orgNombre)} · Campaña: ${esc(st.planCampana)} · ${fecha}</div>
   ${body}
   <script>window.onload=()=>{window.print();}<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
+// ─── RESUMEN INVERSORES ────────────────────────────────────────
+function imprimirResumenInversores() {
+  if (!db.campos.length) { alert('No hay datos para imprimir.'); return; }
+
+  const campana = st.planCampana;
+  const campos = db.campos
+    .filter(c => normalizaCampana(c.campana) === campana)
+    .sort((a,b) => a.nombre.localeCompare(b.nombre));
+
+  if (!campos.length) { alert('No hay campos en la campaña ' + campana); return; }
+
+  // Agrupar por inversor
+  const byInv = {};
+  campos.forEach(campo => {
+    // Inversor efectivo del campo (puede haber lotes con inversor propio)
+    const invCampo = campo.inversor || '(sin inversor)';
+    // Cada lote puede tener su propio inversor
+    campo.lotes.forEach(lote => {
+      const inv = lote.inversor || invCampo;
+      if (!byInv[inv]) byInv[inv] = [];
+      let entry = byInv[inv].find(e => e.campoId === campo.id);
+      if (!entry) {
+        entry = { campoNombre: campo.nombre, campoId: campo.id, lotes: [] };
+        byInv[inv].push(entry);
+      }
+      entry.lotes.push(lote);
+    });
+    // Campo sin lotes igual aparece
+    if (!campo.lotes.length) {
+      if (!byInv[invCampo]) byInv[invCampo] = [];
+      if (!byInv[invCampo].find(e => e.campoId === campo.id))
+        byInv[invCampo].push({ campoNombre: campo.nombre, campoId: campo.id, lotes: [] });
+    }
+  });
+
+  const invNames = Object.keys(byInv).sort((a,b) => a.localeCompare(b));
+
+  // Totales globales
+  let gTotHa = 0, gTotLotes = 0;
+  const fmtHa = v => v ? Number(v).toLocaleString('es-AR',{minimumFractionDigits:1,maximumFractionDigits:1}) : '—';
+  const escH = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  let filas = '';
+  invNames.forEach(inv => {
+    const entries = byInv[inv];
+    let invHa = 0, invLotes = 0;
+    entries.forEach(e => { e.lotes.forEach(l => { invHa += l.superficie||0; invLotes++; }); });
+    gTotHa += invHa; gTotLotes += invLotes;
+
+    // Fila de inversor (cabecera de grupo)
+    filas += `<tr class="inv-hdr">
+      <td colspan="4">👤 ${escH(inv)}</td>
+      <td class="r">${fmtHa(invHa)}</td>
+    </tr>`;
+
+    entries.sort((a,b)=>a.campoNombre.localeCompare(b.campoNombre)).forEach(entry => {
+      const campoHa = entry.lotes.reduce((s,l)=>s+(l.superficie||0),0);
+      if (!entry.lotes.length) {
+        filas += `<tr class="campo-row">
+          <td class="ind">${escH(entry.campoNombre)}</td>
+          <td colspan="2" class="muted">sin lotes</td>
+          <td></td>
+          <td class="r muted">—</td>
+        </tr>`;
+        return;
+      }
+      entry.lotes.sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach((lote, i) => {
+        const cultivo = lote.cultivo2 ? `${escH(lote.cultivo)} + ${escH(lote.cultivo2)}` : escH(lote.cultivo||'—');
+        const invLote = lote.inversor
+          ? `<span class="badge-inv">${escH(lote.inversor)}</span>`
+          : '';
+        filas += `<tr class="lote-row">
+          <td class="ind">${i===0 ? escH(entry.campoNombre) : ''}</td>
+          <td>${escH(lote.nombre)}</td>
+          <td>${cultivo}</td>
+          <td>${invLote}</td>
+          <td class="r mono">${fmtHa(lote.superficie)}</td>
+        </tr>`;
+      });
+    });
+  });
+
+  const fecha = new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+
+  const win = window.open('','_blank','width=820,height=640');
+  win.document.write(`<!DOCTYPE html><html lang="es"><head>
+  <meta charset="UTF-8">
+  <title>Inversores · ${escH(campana)}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;color:#18223a;background:#fff;padding:14mm 12mm}
+    h1{font-size:16px;font-weight:700;margin-bottom:2px}
+    .meta{font-size:10px;color:#7a8aaa;margin-bottom:16px}
+    table{width:100%;border-collapse:collapse}
+    thead tr{background:#e4e9f5}
+    th{padding:6px 10px;font-size:9px;font-weight:700;letter-spacing:.08em;color:#3d4e72;text-align:left;border-bottom:2px solid #bec9e4;white-space:nowrap}
+    th.r{text-align:right}
+    td{padding:5px 10px;border-bottom:1px solid #eef1f8;vertical-align:middle}
+    td.r{text-align:right}
+    td.mono{font-family:monospace;font-size:11px}
+    td.ind{padding-left:20px;font-weight:600;color:#18223a}
+    td.muted{color:#9ca3af;font-style:italic}
+    tr.inv-hdr td{background:#052e16;color:#bbf7d0;font-weight:700;font-size:11px;padding:7px 10px;border-bottom:none;letter-spacing:.02em}
+    tr.lote-row:hover td{background:#f8fafc}
+    .badge-inv{background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:600;white-space:nowrap}
+    tfoot tr td{background:#e4e9f5;font-weight:700;border-top:2px solid #bec9e4;padding:7px 10px}
+    @media print{
+      @page{size:A4 portrait;margin:0}
+      body{padding:10mm 10mm}
+      tr.inv-hdr{break-before:auto}
+      tr.lote-row,tr.campo-row{break-inside:avoid}
+    }
+  </style>
+  </head><body>
+  <h1>📋 Resumen de inversores por campo</h1>
+  <div class="meta">Campaña ${escH(campana)} · ${fecha}</div>
+  <table>
+    <thead><tr>
+      <th>CAMPO</th><th>LOTE</th><th>CULTIVO</th><th>INV. LOTE</th><th class="r">HA</th>
+    </tr></thead>
+    <tbody>${filas}</tbody>
+    <tfoot><tr>
+      <td colspan="4">TOTAL</td>
+      <td class="r mono">${fmtHa(gTotHa)}</td>
+    </tr></tfoot>
+  </table>
+  <script>window.onload=function(){window.print();}<\/script>
   </body></html>`);
   win.document.close();
 }
