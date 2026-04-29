@@ -486,8 +486,15 @@
       </div>
       <!-- Barra de filtro + acciones -->
       <div class="flex items-center gap-3 mb-5 flex-wrap">
-        <div class="flex items-center gap-2 flex-1 min-w-0">
-          <label class="text-xs font-semibold text-gray-500 whitespace-nowrap">Ver por inversor:</label>
+        <div class="flex items-center gap-2">
+          <label class="text-xs font-semibold text-gray-500 whitespace-nowrap">Prestador:</label>
+          <select id="facturas-contr-filter" onchange="renderFacturasPendientes()"
+            class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white min-w-[180px]">
+            <option value="">— Todos —</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="text-xs font-semibold text-gray-500 whitespace-nowrap">Inversor:</label>
           <select id="facturas-inv-filter" onchange="renderFacturasPendientes()"
             class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white min-w-[180px]">
             <option value="">— Todos —</option>
@@ -2165,18 +2172,29 @@ function renderFacturasPendientes() {
   // Construir todos los items y llenar el selector de inversores
   _pendingItems = _buildPendingItems();
   const allInversores = [...new Set(_pendingItems.map(i => i.inversor))].sort();
+  const allContratistas = [...new Set(_pendingItems.map(i => i.contratista))].sort();
+
   const selInv = document.getElementById('facturas-inv-filter');
   if (selInv) {
     const prev = selInv.value;
-    selInv.innerHTML = '<option value="">— Todos los inversores —</option>' +
+    selInv.innerHTML = '<option value="">— Todos —</option>' +
       allInversores.map(inv => `<option value="${esc(inv)}"${inv===prev?' selected':''}>${esc(inv)}</option>`).join('');
     if (prev && allInversores.includes(prev)) selInv.value = prev;
   }
 
-  // Filtrar según selector
+  const selContr = document.getElementById('facturas-contr-filter');
+  if (selContr) {
+    const prev = selContr.value;
+    selContr.innerHTML = '<option value="">— Todos —</option>' +
+      allContratistas.map(c => `<option value="${esc(c)}"${c===prev?' selected':''}>${esc(c)}</option>`).join('');
+    if (prev && allContratistas.includes(prev)) selContr.value = prev;
+  }
+
   const filtroInv = selInv ? selInv.value : '';
-  const filtroContr = '';
-  let items = filtroInv ? _pendingItems.filter(i => i.inversor === filtroInv) : _pendingItems;
+  const filtroContr = selContr ? selContr.value : '';
+  let items = _pendingItems;
+  if (filtroInv)   items = items.filter(i => i.inversor === filtroInv);
+  if (filtroContr) items = items.filter(i => i.contratista === filtroContr);
 
   // Re-indexar para que los _idx correspondan con items filtrados
   items.forEach((it, idx) => { it._idx = idx; });
@@ -2363,7 +2381,10 @@ function asignarFactura(idx) {
 function exportarFacturasExcel() {
   if (typeof XLSX === 'undefined') { alert('La librería Excel no está disponible. Verificá tu conexión.'); return; }
   const filtroInv = document.getElementById('facturas-inv-filter')?.value || '';
-  const items = filtroInv ? _pendingItems.filter(i => i.inversor === filtroInv) : _pendingItems;
+  const filtroContr = document.getElementById('facturas-contr-filter')?.value || '';
+  let items = _pendingItems;
+  if (filtroInv)   items = items.filter(i => i.inversor === filtroInv);
+  if (filtroContr) items = items.filter(i => i.contratista === filtroContr);
   if (!items.length) { alert('No hay ítems para exportar.'); return; }
 
   const orgs = orgsLoad() || [];
@@ -2432,7 +2453,10 @@ function exportarFacturasExcel() {
 
 function imprimirFacturas() {
   const filtroInv = document.getElementById('facturas-inv-filter')?.value || '';
-  const items = filtroInv ? _pendingItems.filter(i => i.inversor === filtroInv) : _pendingItems;
+  const filtroContr = document.getElementById('facturas-contr-filter')?.value || '';
+  let items = _pendingItems;
+  if (filtroInv)   items = items.filter(i => i.inversor === filtroInv);
+  if (filtroContr) items = items.filter(i => i.contratista === filtroContr);
   if (!items.length) { alert('No hay ítems para imprimir.'); return; }
 
   const orgs = orgsLoad() || [];
