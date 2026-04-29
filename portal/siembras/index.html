@@ -2124,10 +2124,10 @@ function _renderFacturasPorMes(filtroInv, filtroContr) {
         <table class="data-table">
           <thead><tr>
             <th>Fecha</th>
-            <th>Contratista</th>
             <th>Responsable</th>
             <th>Campo</th>
             <th>Lotes</th>
+            <th class="text-right">Has</th>
             <th>Insumos / Trabajo</th>
             <th>Inversor</th>
             <th class="text-right">$ Total</th>
@@ -2144,10 +2144,10 @@ function _renderFacturasPorMes(filtroInv, filtroContr) {
         : `<span class="text-gray-300 text-xs">—</span>`;
       html += `<tr>
         <td class="whitespace-nowrap">${fmtDate(it.fecha)}</td>
-        <td class="font-medium">${esc(it.contratista)}</td>
         <td>${respBadge}</td>
         <td>${esc(it.campoNombre)}</td>
         <td class="text-xs text-gray-600">${esc(it.lotes.join(', '))}</td>
+        <td class="text-right font-medium text-gray-700">${it.superficie > 0 ? it.superficie.toFixed(2) : '—'}</td>
         <td class="text-xs text-gray-600">${esc(it.insumos.join(', '))}</td>
         <td class="text-xs text-gray-500">${esc(it.inversor)}</td>
         <td class="text-right font-semibold text-gray-700">$${it.totalOriginal.toFixed(2)}</td>
