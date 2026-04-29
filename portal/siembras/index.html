@@ -136,6 +136,9 @@
     /* plan de siembra tabs */
     .plan-tab-btn { color:#6b7280; }
     .plan-tab-btn.active { background:#14532d; color:white; }
+    .ftab-btn { color:#6b7280; border-color:#e5e7eb; background:white; }
+    .ftab-btn:hover { background:#f9fafb; }
+    .ftab-btn.active { background:#1e3a5f; color:white; border-color:#1e3a5f; }
     .margen-pos { color:#15803d; font-weight:600; }
     .margen-neg { color:#dc2626; font-weight:600; }
     .rend-input { width:70px; border:1px solid #d1d5db; border-radius:6px; padding:3px 6px; text-align:right; font-size:12px; background:white; }
@@ -498,6 +501,13 @@
           class="flex items-center gap-1.5 bg-blue-700 hover:bg-blue-600 text-white text-sm px-3 py-1.5 rounded-lg transition-colors">
           ↓ Excel
         </button>
+      </div>
+      <!-- Sub-tabs -->
+      <div class="flex gap-2 mb-4">
+        <button onclick="setFacturasTab('prestador')" id="ftab-prestador"
+          class="ftab-btn px-4 py-1.5 text-xs font-semibold rounded-lg border transition-colors">👤 Por prestador</button>
+        <button onclick="setFacturasTab('mes')" id="ftab-mes"
+          class="ftab-btn px-4 py-1.5 text-xs font-semibold rounded-lg border transition-colors">📅 Por mes</button>
       </div>
       <div id="facturas-body"></div>
     </div>
@@ -1018,7 +1028,7 @@ function dbSave(d) {
 
 // ─── STATE ───────────────────────────────────────────────────────────
 let db = { campos: [], registros: [] };
-let st = { campoId: null, tab: 'registros', charts: {}, globalView: null, orgId: null, planTab: 'dashboard', planCampana: '2026/2027', sidebarCampana: '2026/2027' };
+let st = { campoId: null, tab: 'registros', charts: {}, globalView: null, orgId: null, planTab: 'dashboard', planCampana: '2026/2027', sidebarCampana: '2026/2027', facturasTab: 'prestador' };
 let aplicEditId = null;
 let rowSeq = 0;
 const expandedGroups = new Set();
@@ -2020,6 +2030,129 @@ function _buildPendingItems() {
   return Object.values(itemMap);
 }
 
+function setFacturasTab(tab) {
+  st.facturasTab = tab;
+  document.querySelectorAll('.ftab-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('ftab-' + tab);
+  if (btn) btn.classList.add('active');
+  renderFacturasPendientes();
+}
+
+const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function _buildAllFacturableItems(filtroInv) {
+  // Todos los registros facturables, con o sin FC asignada
+  const regs = db.registros.filter(r => CATS_FACTURABLES.includes(r.categoria));
+  const itemMap = {};
+  regs.forEach(r => {
+    const key = `${r.aplicacionId||r.id}||${r.contratista||''}||${r.inversor||''}`;
+    if (!itemMap[key]) {
+      const campo = getCampo(r.campoId);
+      itemMap[key] = {
+        aplicacionId: r.aplicacionId || r.id,
+        contratista: r.contratista || '(sin contratista)',
+        inversor: r.inversor || '(sin inversor)',
+        campoNombre: campo ? `${campo.nombre} ${campo.campana||''}`.trim() : '?',
+        fecha: r.fecha,
+        ot: r.ot || '',
+        lotes: [],
+        insumos: [],
+        totalOriginal: 0,
+        superficie: 0,
+        factura: r.factura || '',   // primera FC encontrada en el grupo
+      };
+    }
+    const it = itemMap[key];
+    if (!it.lotes.includes(r.loteName)) it.lotes.push(r.loteName);
+    if (r.insumo && !it.insumos.includes(r.insumo)) it.insumos.push(r.insumo);
+    it.totalOriginal += r.total || 0;
+    it.superficie += r.superficie || 0;
+    if (r.factura && !it.factura) it.factura = r.factura;
+  });
+  const all = Object.values(itemMap);
+  return filtroInv ? all.filter(i => i.inversor === filtroInv) : all;
+}
+
+function _renderFacturasPorMes(filtroInv) {
+  const items = _buildAllFacturableItems(filtroInv);
+  if (!items.length) return `<div class="text-center py-20 text-gray-400">
+    <div class="text-5xl mb-4">📭</div>
+    <p class="font-semibold text-lg text-gray-600">Sin actividades registradas</p>
+  </div>`;
+
+  // Agrupar por mes (YYYY-MM)
+  const byMes = {};
+  items.forEach(it => {
+    const mes = it.fecha ? it.fecha.slice(0,7) : 'sin-fecha';
+    if (!byMes[mes]) byMes[mes] = [];
+    byMes[mes].push(it);
+  });
+
+  let html = '';
+  Object.keys(byMes).sort().reverse().forEach(mesKey => {
+    const mesItems = byMes[mesKey].sort((a,b) => a.fecha.localeCompare(b.fecha));
+    const total = mesItems.reduce((s,i) => s + i.totalOriginal, 0);
+    const nFact = mesItems.filter(i => i.factura).length;
+    const n = mesItems.length;
+
+    let mesLabel = mesKey;
+    if (mesKey !== 'sin-fecha') {
+      const [y, m] = mesKey.split('-');
+      mesLabel = `${MESES_ES[+m-1]} ${y}`;
+    }
+
+    html += `
+    <div class="mb-5 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+      <div class="flex items-center justify-between px-4 py-3 bg-slate-800 text-white">
+        <div class="flex items-center gap-3">
+          <span class="text-base">📅</span>
+          <span class="font-bold text-base">${mesLabel}</span>
+          <span class="bg-slate-600 text-slate-200 text-xs px-2 py-0.5 rounded-full">${n} ítem${n!==1?'s':''}</span>
+          ${nFact===n
+            ? `<span class="bg-green-700 text-green-200 text-xs px-2 py-0.5 rounded-full">✅ Todo facturado</span>`
+            : nFact > 0
+              ? `<span class="bg-amber-700 text-amber-200 text-xs px-2 py-0.5 rounded-full">${nFact}/${n} con FC</span>`
+              : `<span class="bg-red-900 text-red-300 text-xs px-2 py-0.5 rounded-full">⏳ Sin facturar</span>`
+          }
+        </div>
+        <span class="font-bold text-orange-300 text-base">$${total.toFixed(2)}</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="data-table">
+          <thead><tr>
+            <th>Fecha</th>
+            <th>Contratista</th>
+            <th>Campo</th>
+            <th>Lotes</th>
+            <th>Insumos / Trabajo</th>
+            <th>Inversor</th>
+            <th class="text-right">$ Total</th>
+            <th>Factura</th>
+          </tr></thead>
+          <tbody>`;
+
+    mesItems.forEach(it => {
+      const fcBadge = it.factura
+        ? `<span class="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">✅ ${esc(it.factura)}</span>`
+        : `<span class="inline-flex items-center text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">⏳ pendiente</span>`;
+      html += `<tr>
+        <td class="whitespace-nowrap">${fmtDate(it.fecha)}</td>
+        <td class="font-medium">${esc(it.contratista)}</td>
+        <td>${esc(it.campoNombre)}</td>
+        <td class="text-xs text-gray-600">${esc(it.lotes.join(', '))}</td>
+        <td class="text-xs text-gray-600">${esc(it.insumos.join(', '))}</td>
+        <td class="text-xs text-gray-500">${esc(it.inversor)}</td>
+        <td class="text-right font-semibold text-gray-700">$${it.totalOriginal.toFixed(2)}</td>
+        <td>${fcBadge}</td>
+      </tr>`;
+    });
+
+    html += `</tbody></table></div></div>`;
+  });
+
+  return html;
+}
+
 function renderFacturasPendientes() {
   // Construir todos los items y llenar el selector de inversores
   _pendingItems = _buildPendingItems();
@@ -2065,6 +2198,17 @@ function renderFacturasPendientes() {
       <p class="font-semibold text-lg text-gray-600">${filtroInv ? 'Sin pendientes para este inversor' : 'Todo al día'}</p>
       <p class="text-sm mt-2">${filtroInv ? 'No hay facturas pendientes para '+esc(filtroInv) : 'No hay labores ni insumos sin factura asignada'}</p>
     </div>`;
+    return;
+  }
+
+  // Sync subtab buttons
+  document.querySelectorAll('.ftab-btn').forEach(b => b.classList.remove('active'));
+  const ftabBtn = document.getElementById('ftab-' + (st.facturasTab||'prestador'));
+  if (ftabBtn) ftabBtn.classList.add('active');
+
+  // Vista por mes — historial completo (con y sin FC)
+  if (st.facturasTab === 'mes') {
+    body.innerHTML = _renderFacturasPorMes(filtroInv);
     return;
   }
 
