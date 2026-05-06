@@ -2454,6 +2454,85 @@ function exportarFacturasExcel() {
 function imprimirFacturas() {
   const filtroInv = document.getElementById('facturas-inv-filter')?.value || '';
   const filtroContr = document.getElementById('facturas-contr-filter')?.value || '';
+
+  // ── Tab "Agrowillem por mes" ──────────────────────────────────────────────
+  if (st.facturasTab === 'mes') {
+    const items = _buildAllFacturableItems(filtroInv, 'Agrowillem SRL');
+    if (!items.length) { alert('No hay actividades para imprimir.'); return; }
+    const orgs = orgsLoad() || [];
+    const orgNombre = orgs.find(o => o.id === st.orgId)?.nombre || 'TA-Agrowillem';
+
+    // Agrupar por mes (YYYY-MM) newest first
+    const porMes = {};
+    items.forEach(it => {
+      const m = (it.fecha || '').slice(0, 7);
+      if (!porMes[m]) porMes[m] = [];
+      porMes[m].push(it);
+    });
+    const meses = Object.keys(porMes).filter(Boolean).sort().reverse();
+
+    let tablas = '';
+    meses.forEach(mes => {
+      const its = porMes[mes].sort((a,b) => a.fecha.localeCompare(b.fecha));
+      const mesTotal = its.reduce((s,i) => s + i.totalOriginal, 0);
+      const [anio, mm] = mes.split('-');
+      const mesLabel = `${MESES_ES[+mm - 1]} ${anio}`;
+      tablas += `<div class="mes-block">
+        <div class="mes-header"><span>${mesLabel}</span><span>$${mesTotal.toFixed(2)}</span></div>
+        <table><thead><tr>
+          <th>Fecha</th><th>Responsable</th><th>Campo</th><th>Lotes</th><th class="num">Has</th><th>Trabajo / Insumos</th><th>Inversor</th><th class="num">Total $</th><th>Factura</th>
+        </tr></thead><tbody>`;
+      its.forEach(it => {
+        const fcBadge = it.factura
+          ? `<span style="color:#166534;font-weight:bold">${esc(it.factura)}</span>`
+          : `<span style="color:#92400e">⏳ pendiente</span>`;
+        tablas += `<tr>
+          <td>${fmtDate(it.fecha)}</td>
+          <td>${esc(it.responsable || '—')}</td>
+          <td>${esc(it.campoNombre)}</td>
+          <td>${esc(it.lotes.join(', '))}</td>
+          <td class="num">${it.superficie > 0 ? it.superficie.toFixed(2) : '—'}</td>
+          <td>${esc(it.insumos.join(', '))}</td>
+          <td>${esc(it.inversor)}</td>
+          <td class="num">$${it.totalOriginal.toFixed(2)}</td>
+          <td>${fcBadge}</td>
+        </tr>`;
+      });
+      tablas += `<tr class="subtotal"><td colspan="8">Total ${mesLabel}</td><td class="num">$${mesTotal.toFixed(2)}</td></tr>`;
+      tablas += `</tbody></table></div>`;
+    });
+
+    const grandTotal = items.reduce((s,i) => s + i.totalOriginal, 0);
+    const win = window.open('', '_blank');
+    win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+    <title>Agrowillem por mes</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }
+      h1 { font-size: 15px; margin: 0 0 2px; }
+      .meta { color: #555; font-size: 10px; margin-bottom: 16px; }
+      .mes-block { margin-bottom: 20px; break-inside: avoid; }
+      .mes-header { display: flex; justify-content: space-between; background: #1e3a5f; color: white;
+        padding: 6px 10px; font-size: 12px; font-weight: bold; border-radius: 4px 4px 0 0; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+      th { background: #1e3a5f; color: white; padding: 5px 7px; text-align: left; font-size: 10px; }
+      td { padding: 4px 7px; border-bottom: 1px solid #e5e7eb; font-size: 10px; }
+      .num { text-align: right; }
+      .subtotal td { background: #f0f4ff; font-weight: bold; border-top: 1px solid #9ca3af; }
+      .grand-total { text-align: right; font-size: 13px; font-weight: bold; margin-top: 12px;
+        padding: 8px 12px; background: #fff7ed; border: 1px solid #fdba74; border-radius: 6px; display: inline-block; float: right; }
+      @media print { body { margin: 10px; } }
+    </style></head><body>
+    <h1>Agrowillem SRL — Historial por mes</h1>
+    <div class="meta">${orgNombre} · Generado: ${new Date().toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+    ${tablas}
+    <div class="grand-total">Total general: $${grandTotal.toFixed(2)}</div>
+    <script>window.onload=()=>{window.print();}<\/script>
+    </body></html>`);
+    win.document.close();
+    return;
+  }
+
+  // ── Tab "Por prestador" (comportamiento original) ─────────────────────────
   let items = _pendingItems;
   if (filtroInv)   items = items.filter(i => i.inversor === filtroInv);
   if (filtroContr) items = items.filter(i => i.contratista === filtroContr);
