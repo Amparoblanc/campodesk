@@ -3217,9 +3217,10 @@ function renderRegistros() {
     const supTotal  = uniq(g.members.map(r=>r.loteId)).reduce((s,lid) => {
       const r = g.members.find(x=>x.loteId===lid); return s + (r?r.superficie:0);
     }, 0);
-    const salTotal  = g.members.reduce((s,r)=>s+(r.salida||0),0);
-    const srTotal   = g.members.reduce((s,r)=>s+(r.salidaReal||0),0);
-    const devTotal  = g.members.reduce((s,r)=>s+(r.devolucion||0),0);
+    // Salida del header = hectáreas aplicadas (no suma de insumos)
+    const salTotal  = supTotal;
+    const srTotal   = supTotal;
+    const devTotal  = 0;
     const usdhaGrp  = supTotal>0 ? round2(total/supTotal) : 0;
     const conts     = uniq(g.members.map(r=>r.contratista)).join(', ');
     const remitos   = uniq(g.members.map(r=>r.remito).filter(Boolean)).join(', ');
@@ -3234,9 +3235,9 @@ function renderRegistros() {
       <td class="font-medium text-gray-400 italic">${esc(cats)}</td>
       <td></td>
       <td></td>
-      <td class="text-right">${round4(salTotal)||''}</td>
-      <td class="text-right">${round4(srTotal)||''}</td>
-      <td class="text-right ${devTotal>0?'text-orange-600':''}">${devTotal?round4(devTotal):'—'}</td>
+      <td class="text-right text-gray-500">${supTotal ? supTotal+' ha' : ''}</td>
+      <td class="text-right text-gray-500">${supTotal ? supTotal+' ha' : ''}</td>
+      <td class="text-right">—</td>
       <td>${esc(remitos)}</td>
       <td>${esc(ot)}</td>
       <td>${esc(inv)}</td>
