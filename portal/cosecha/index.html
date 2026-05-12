@@ -573,8 +573,8 @@ body.ro-mode .btn-y.btn-sm { display:none!important; }
     <div class="fg"><label>FECHA</label><input type="date" id="ext-fecha"></div>
     <div class="fg"><label>CHOFER</label><input type="text" id="ext-chofer" placeholder="Apellido"></div>
     <div class="fg"><label>KG BALANZA</label><input type="number" id="ext-kgb" placeholder="0"></div>
-    <div class="fg"><label>KG DESCARGA</label><input type="number" id="ext-kgd" placeholder="0 — después"></div>
-    <div class="fg sp2"><label>KG NETO <span style="font-weight:400;color:var(--muted)">(se descuenta del stock)</span></label><input type="number" id="ext-kgn" placeholder="0"></div>
+    <div class="fg"><label>KG DESCARGA <span style="font-weight:400;color:var(--muted)">(definitivo · descuenta del stock)</span></label><input type="number" id="ext-kgd" placeholder="0 — después"></div>
+    <div class="fg sp2"><label>KG NETO <span style="font-weight:400;color:var(--muted)">(liquidación puerto — opcional)</span></label><input type="number" id="ext-kgn" placeholder="0 — opcional"></div>
     <div class="fg sp2"><label>OBSERVACIONES</label><input type="text" id="ext-obs" placeholder="Opcional (ej: OLEICO, destino…)"></div>
   </div>
   <div class="btn-row" style="margin-top:18px">
@@ -1303,8 +1303,8 @@ function renderCamiones(){
       <td><span style="font-size:9px;background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:4px;padding:1px 6px;font-weight:700;font-family:var(--mono)">🌾 SILO</span></td>
       <td style="font-weight:500">${e.chofer||'—'}</td>
       <td class="r" style="color:var(--muted)">${e.kgB?fmt(+e.kgB):'—'}</td>
-      <td class="r" style="color:var(--muted)">${e.kgD?fmt(+e.kgD):'—'}</td>
-      <td class="r" style="font-weight:700;color:#5b21b6">${fmt(+e.kgN||0)}</td>
+      <td class="r" style="font-weight:700;color:${e.kgD!=null?'#5b21b6':'var(--o)'}">${e.kgD!=null?fmt(+e.kgD):'<span style="font-size:10px">⏳ pdte.</span>'}</td>
+      <td class="r" style="color:var(--muted)">${e.kgN!=null?fmt(+e.kgN):'—'}</td>
       <td style="font-size:11px;color:var(--muted)">${e.obs||''}</td>
       <td><div class="btn-row ro-hide">
         <button class="btn btn-edit btn-xs" onclick="openEditExtraccion('${e.id}')">✏</button>
@@ -2186,7 +2186,9 @@ function delSalida(id,siloId){
 
 /* ── EXTRACCIONES POR CAMPO ── */
 function getExtraccionesCampo(campoId){return (S.extracciones||[]).filter(e=>e.hid===S.activeId&&e.campoId===campoId);}
-function totalExtraidoCampo(campoId){return getExtraccionesCampo(campoId).reduce((a,e)=>a+(+e.kgN||0),0);}
+// Usa kgD (descarga) si está cargado, sino kgB (balanza) como provisorio
+function kgEfectivoExt(e){return e.kgD!=null?+e.kgD:(+e.kgB||0);}
+function totalExtraidoCampo(campoId){return getExtraccionesCampo(campoId).reduce((a,e)=>a+kgEfectivoExt(e),0);}
 
 function setSiloTab(campoId,tab){
   if(!S._siloTabs)S._siloTabs={};
@@ -2231,7 +2233,8 @@ function saveExtraccion(){
   const id=document.getElementById('ext-id').value;
   const campoId=document.getElementById('ext-campo-id').value;
   const kgN=document.getElementById('ext-kgn').value;
-  if(!kgN){toast('Ingresá los KG NETO');return;}
+  const kgBval=document.getElementById('ext-kgb').value;
+  if(!kgBval&&!kgN){toast('Ingresá al menos KG BALANZA');return;}
   const ext={
     id: id||uid(),
     hid: S.activeId,
@@ -2240,7 +2243,7 @@ function saveExtraccion(){
     chofer: document.getElementById('ext-chofer').value.trim(),
     kgB: +document.getElementById('ext-kgb').value||null,
     kgD: +document.getElementById('ext-kgd').value||null,
-    kgN: +kgN,
+    kgN: kgN?+kgN:null,
     obs: document.getElementById('ext-obs').value.trim(),
   };
   if(!S.extracciones)S.extracciones=[];
@@ -2292,8 +2295,8 @@ function _renderExtraccionesCampo(campoId,campoKgTotal){
       <td style="padding:8px 10px;font-size:12px">${e.fecha||'—'}</td>
       <td style="padding:8px 10px;font-size:12px;font-weight:600">${e.chofer||'—'}</td>
       <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-size:12px">${e.kgB?fmt(+e.kgB):'—'}</td>
-      <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-size:12px">${e.kgD?fmt(+e.kgD):'—'}</td>
-      <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--g)">${fmt(+e.kgN||0)}</td>
+      <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-size:12px;font-weight:700;color:${e.kgD!=null?'var(--g)':'var(--o)'}">${e.kgD!=null?fmt(+e.kgD):'<span style="font-size:10px">⏳ pdte.</span>'}</td>
+      <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--muted)">${e.kgN!=null?fmt(+e.kgN):'—'}</td>
       <td style="padding:8px 10px;font-size:11px;color:var(--muted)">${e.obs||''}</td>
       <td style="padding:8px 10px">
         <div class="btn-row ro-hide">
@@ -2304,8 +2307,9 @@ function _renderExtraccionesCampo(campoId,campoKgTotal){
     </tr>`).join('');
 
   const totalB=exts.reduce((a,e)=>a+(+e.kgB||0),0);
-  const totalD=exts.reduce((a,e)=>a+(+e.kgD||0),0);
+  const totalD=exts.reduce((a,e)=>a+kgEfectivoExt(e),0); // kgD si existe, sino kgB
   const totalN=exts.reduce((a,e)=>a+(+e.kgN||0),0);
+  const nPdte=exts.filter(e=>e.kgD==null).length;
 
   html+=`
     <div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border)">
@@ -2324,7 +2328,7 @@ function _renderExtraccionesCampo(campoId,campoKgTotal){
         <td colspan="2" style="padding:8px 10px;font-weight:700;font-size:11px">${sorted.length} camión${sorted.length!==1?'es':''}</td>
         <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-weight:700">${totalB?fmt(totalB):'—'}</td>
         <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-weight:700">${totalD?fmt(totalD):'—'}</td>
-        <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-weight:700;color:var(--g)">${fmt(totalN)}</td>
+        <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-weight:700;color:var(--g)">${fmt(totalN)}${nPdte?`<span style="font-size:9px;color:var(--o);font-weight:400;margin-left:4px">(${nPdte} pdte.)</span>`:''}</td>
         <td colspan="2"></td>
       </tr></tfoot>
     </table></div>`;
@@ -2340,8 +2344,12 @@ function renderSilos(){
 
   // KPIs
   const totalKg=silos.reduce((a,s)=>a+totalKgSilo(s),0);
-  const totalStock=silos.reduce((a,s)=>a+stockSilo(s),0);
-  const totalSalido=silos.reduce((a,s)=>a+getSalidasSilo(s.id).reduce((b,x)=>b+(+x.kgC||0),0),0);
+  // Salido = extracciones por campo (nuevo sistema) + salidas por bolsa legacy
+  const camposEnSilos=[...new Set(silos.map(s=>s.campo))];
+  const totalExtraido=camposEnSilos.reduce((a,cid)=>a+totalExtraidoCampo(cid),0);
+  const totalSalidoLegacy=silos.reduce((a,s)=>a+getSalidasSilo(s.id).reduce((b,x)=>b+(+x.kgC||0),0),0);
+  const totalSalido=totalExtraido+totalSalidoLegacy;
+  const totalStock=Math.max(0,totalKg-totalSalido);
   const nActivas=silos.filter(s=>s.estado!=='vaciada').length;
 
   document.getElementById('silos-kpis').innerHTML=`
@@ -2435,37 +2443,18 @@ function renderSilos(){
 
     const siloRows=cSilos.map(silo=>{
       const entradas=getEntradasSilo(silo.id);
-      const salidas=getSalidasSilo(silo.id);
       const kgTotal=totalKgSilo(silo);
-      const kgSalido=salidas.reduce((a,s)=>a+(+s.kgC||0),0);
-      const stock=stockSilo(silo);
-      const pctSalido=kgTotal?kgSalido/kgTotal*100:0;
 
       const entradaRows=entradas.map(ent=>`
         <tr style="background:#f0faf4">
           <td style="padding:5px 10px 5px 28px;font-size:11px;color:var(--g);font-weight:600">📥 ${ent.fecha||'—'}</td>
           <td style="padding:5px 10px;font-size:11px;color:var(--muted)">Entrada${ent.lote?' · Lote '+ent.lote:''}</td>
           <td style="padding:5px 10px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--g);font-weight:700">+${fmt(ent.kg)}</td>
-          <td colspan="2" style="padding:5px 10px;font-size:10px;color:var(--muted)">${ent.obs||''}</td>
+          <td style="padding:5px 10px;font-size:10px;color:var(--muted)">${ent.obs||''}</td>
           <td style="padding:5px 10px">
-            <div class="btn-row">
+            <div class="btn-row ro-hide">
               <button class="btn btn-edit btn-xs" onclick="openEditEntrada('${ent.id}')">✏</button>
               <button class="btn btn-del btn-xs" onclick="delEntrada('${ent.id}')">✕</button>
-            </div>
-          </td>
-        </tr>`).join('');
-
-      const salidaRows=salidas.map(sal=>`
-        <tr style="background:#fafbff">
-          <td style="padding:5px 10px 5px 28px;font-size:11px;color:var(--muted)">🚛 ${sal.fecha||'—'}</td>
-          <td style="padding:5px 10px;font-size:11px">${sal.chofer||'—'}</td>
-          <td style="padding:5px 10px;text-align:right;font-family:var(--mono);font-size:11px">-${fmt(sal.kgC)}</td>
-          <td style="padding:5px 10px;text-align:right;font-family:var(--mono);font-size:11px;color:${sal.kgB?'inherit':'#7a8aaa'}">${sal.kgB?fmt(sal.kgB):'—'}</td>
-          <td style="padding:5px 10px;text-align:right;font-family:var(--mono);font-size:11px;color:${sal.kgL?'var(--g)':'var(--o)'}">${sal.kgL?fmt(sal.kgL):'pdte.'}</td>
-          <td style="padding:5px 10px">
-            <div class="btn-row">
-              <button class="btn btn-edit btn-xs" onclick="openEditSalida('${sal.id}')">✏</button>
-              <button class="btn btn-del btn-xs" onclick="delSalida('${sal.id}','${silo.id}')">✕</button>
             </div>
           </td>
         </tr>`).join('');
@@ -2474,61 +2463,56 @@ function renderSilos(){
         <tr style="border-top:1px solid var(--border)">
           <td style="padding:10px 12px;font-weight:700;font-family:var(--mono)">${silo.num}</td>
           <td style="padding:10px 12px;font-size:12px;color:var(--text2)">${silo.inv||'—'}</td>
+          <td style="padding:10px 12px;font-size:11px;color:var(--muted)">${silo.lote?'Lote '+silo.lote:'—'}</td>
           <td style="padding:10px 12px;font-size:11px;color:var(--muted)">${silo.fecha||'—'}</td>
-          <td style="padding:10px 12px;text-align:right;font-family:var(--mono);font-weight:600">${kgTotal?fmt(kgTotal):'<span style="color:var(--muted);font-size:10px">sin entradas</span>'}</td>
-          <td style="padding:10px 12px;text-align:right;font-family:var(--mono);color:var(--g);font-weight:700">${fmt(stock)}</td>
-          <td style="padding:10px 12px">
-            <div style="background:var(--bg2);border-radius:99px;height:7px;overflow:hidden;min-width:60px">
-              <div style="height:100%;width:${pctSalido}%;background:var(--b);border-radius:99px;transition:width .4s"></div>
-            </div>
-            <div style="font-size:10px;color:var(--muted);margin-top:2px;text-align:center">${pctSalido.toFixed(0)}% salido</div>
-          </td>
+          <td style="padding:10px 12px;text-align:right;font-family:var(--mono);font-weight:700;font-size:13px">${kgTotal?fmt(kgTotal):'<span style="color:var(--muted);font-size:10px">sin entradas</span>'}</td>
           <td style="padding:10px 12px">${estadoBadge(silo.estado)}</td>
           <td style="padding:10px 12px">
-            <div class="btn-row">
+            <div class="btn-row ro-hide">
               <button class="btn btn-ghost btn-xs" style="color:var(--g);border-color:var(--gbd)" onclick="openNuevaEntrada('${silo.id}')">📥 Entrada</button>
-              <button class="btn btn-y btn-xs" onclick="openNuevaSalida('${silo.id}')">🚛 Salida</button>
               <button class="btn btn-edit btn-xs" onclick="openEditSilo('${silo.id}')">✏</button>
               <button class="btn btn-del btn-xs" onclick="delSilo('${silo.id}')">🗑</button>
             </div>
           </td>
         </tr>
-        ${entradaRows}
-        ${salidaRows}`;
+        ${entradaRows}`;
     }).join('');
 
     const activeTab=(S._siloTabs||{})[campoId]||'bolsas';
     const extContent=_renderExtraccionesCampo(campoId,campoKg);
+    const campoExtraido=totalExtraidoCampo(campoId);
+    const campoStockNeto=Math.max(0,campoKg-campoExtraido);
+    const th9='padding:8px 12px;background:var(--bg2);font-family:var(--mono);font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.1em;border-bottom:1px solid var(--border)';
     const bolsasContent=`
       ${invPanel}
       <div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border)">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:620px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:520px">
         <thead><tr>
-          <th style="padding:8px 12px;background:var(--bg2);font-family:var(--mono);font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.1em;border-bottom:1px solid var(--border);text-align:left">N° SILO</th>
-          <th style="padding:8px 12px;background:var(--bg2);font-family:var(--mono);font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.1em;border-bottom:1px solid var(--border);text-align:left">INVERSOR</th>
-          <th style="padding:8px 12px;background:var(--bg2);font-family:var(--mono);font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.1em;border-bottom:1px solid var(--border);text-align:left">FECHA</th>
-          <th style="padding:8px 12px;background:var(--bg2);font-family:var(--mono);font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.1em;border-bottom:1px solid var(--border);text-align:right">KG TOTAL</th>
-          <th style="padding:8px 12px;background:var(--bg2);font-family:var(--mono);font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.1em;border-bottom:1px solid var(--border);text-align:right">STOCK</th>
-          <th style="padding:8px 12px;background:var(--bg2);font-family:var(--mono);font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.1em;border-bottom:1px solid var(--border);text-align:left">VACIADO</th>
-          <th style="padding:8px 12px;background:var(--bg2);font-family:var(--mono);font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.1em;border-bottom:1px solid var(--border);text-align:left">ESTADO</th>
-          <th style="padding:8px 12px;background:var(--bg2);font-family:var(--mono);font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.1em;border-bottom:1px solid var(--border)"></th>
+          <th style="${th9};text-align:left">N° SILO</th>
+          <th style="${th9};text-align:left">INVERSOR</th>
+          <th style="${th9};text-align:left">LOTE</th>
+          <th style="${th9};text-align:left">FECHA</th>
+          <th style="${th9};text-align:right">KG INGRESADO</th>
+          <th style="${th9};text-align:left">ESTADO</th>
+          <th style="${th9}"></th>
         </tr></thead>
         <tbody>${siloRows}</tbody>
         <tfoot><tr style="background:var(--bg2)">
-          <td colspan="3" style="padding:8px 12px;font-weight:700;font-size:11px">TOTAL ${cSilos.length} bolsas</td>
+          <td colspan="4" style="padding:8px 12px;font-weight:700;font-size:11px">TOTAL ${cSilos.length} bolsas</td>
           <td style="padding:8px 12px;text-align:right;font-family:var(--mono);font-weight:700">${fmt(campoKg)}</td>
-          <td style="padding:8px 12px;text-align:right;font-family:var(--mono);font-weight:700;color:var(--g)">${fmt(campoStock)}</td>
-          <td colspan="3"></td>
+          <td colspan="2"></td>
         </tr></tfoot>
       </table></div>`;
 
     html+=`
       <div style="background:var(--white);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(18,34,58,.07);margin-bottom:14px">
         <div style="padding:11px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:var(--bg2)">
-          <div style="display:flex;align-items:center;gap:12px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <span style="font-weight:700;font-size:14px">${campo?.nombre||campoId}</span>
             <span style="font-size:11px;color:var(--muted)">${cSilos.length} bolsa${cSilos.length!==1?'s':''}</span>
-            <span style="font-family:var(--mono);font-size:11px;color:var(--g);font-weight:700;background:var(--gbg);border:1px solid var(--gbd);padding:2px 9px;border-radius:99px">${fmt(campoKg/1000,1)}k kg total</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">${fmt(campoKg/1000,1)}k kg ingresado</span>
+            ${campoExtraido>0?`<span style="font-family:var(--mono);font-size:11px;color:var(--o);font-weight:600">−${fmt(campoExtraido/1000,1)}k extraído</span>`:''}
+            <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--g);background:var(--gbg);border:1px solid var(--gbd);padding:2px 10px;border-radius:99px">${fmt(campoStockNeto/1000,1)}k kg stock</span>
           </div>
           <div style="display:flex;gap:6px">
             <button class="btn btn-ghost btn-xs no-print ro-hide" onclick="openNuevaExtraccion('${campoId}')">+ Extracción</button>
