@@ -3320,13 +3320,20 @@ function startRealtimeSync(){
       S.salidas=data.salidas||[];
       S.entradas=data.entradas||[];
       S.avances=data.avances||[];
+      S.extracciones=data.extracciones||[];
       if(!S.activeId)S.activeId=data.activeId||S.harvests[0]?.id;
     } else {
       initDefaults();
       save();
     }
     document.getElementById('loading-screen').style.display='none';
-    showCampaignScreen();
+    const cs=document.getElementById('campaign-screen');
+    if(cs&&cs.style.display==='none'){
+      // Ya está dentro de una campaña — re-render todo al instante
+      renderAll();
+    } else {
+      showCampaignScreen();
+    }
   });
 }
 
