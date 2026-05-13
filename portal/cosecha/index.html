@@ -816,8 +816,22 @@ function totalKgSilo(silo){return getEntradasSilo(silo.id).reduce((a,e)=>a+(+e.k
 function getSilos(){return S.silobolsas.filter(s=>s.hid===S.activeId);}
 
 function load(){}
+const LS_KEY='campodesk_cosecha_v1';
+let _pendingSave=false;
+let _saveRetryTimer=null;
+let _retryCountdown=null;
+let _lastSavedAt=0; // timestamp del \u00faltimo dato aplicado
+
+function _lsSave(data){
+  try{localStorage.setItem(LS_KEY,JSON.stringify(data));}catch(e){}
+}
+function _lsLoad(){
+  try{const s=localStorage.getItem(LS_KEY);return s?JSON.parse(s):null;}catch(e){return null;}
+}
+
 function save(){
   if(isRO()){toast('Modo solo lectura \u2014 no se pueden hacer cambios');return;}
+  const ts=Date.now();
   const data={
     harvests:S.harvests,
     camiones:S.camiones,
@@ -827,13 +841,40 @@ function save(){
     avances:S.avances||[],
     extracciones:S.extracciones||[],
     activeId:S.activeId,
+    savedAt:ts,
   };
+  // 1. Guardar en localStorage al instante \u2014 nunca se pierde aunque falle internet
+  _lsSave(data);
+  _lastSavedAt=ts;
+  _pendingSave=true;
+  // 2. Subir a Firebase
   _syncing=true;
   updateSyncStatus('saving');
+  if(_saveRetryTimer){clearTimeout(_saveRetryTimer);_saveRetryTimer=null;}
+  if(_retryCountdown){clearInterval(_retryCountdown);_retryCountdown=null;}
   db.ref('cosecha_data').set(data)
-    .then(()=>{_syncing=false;updateSyncStatus('ok');})
-    .catch(()=>{_syncing=false;updateSyncStatus('err');});
+    .then(()=>{_syncing=false;_pendingSave=false;updateSyncStatus('ok');})
+    .catch(()=>{
+      _syncing=false;
+      _scheduleRetry();
+    });
 }
+
+function _scheduleRetry(){
+  let secs=10;
+  updateSyncStatus('err',secs);
+  if(_retryCountdown)clearInterval(_retryCountdown);
+  _retryCountdown=setInterval(()=>{
+    secs--;
+    if(secs<=0){clearInterval(_retryCountdown);_retryCountdown=null;save();}
+    else updateSyncStatus('err',secs);
+  },1000);
+}
+
+// Avisar si hay cambios sin sincronizar al cerrar la pesta\u00f1a
+window.addEventListener('beforeunload',e=>{
+  if(_pendingSave){e.preventDefault();e.returnValue='';}
+});
 function getH(){return S.harvests.find(h=>h.id===S.activeId)||S.harvests[0]}
 function getCampos(){return getH()?.campos||[]}
 function getCams(){return S.camiones.filter(c=>c.hid===S.activeId)}
@@ -962,13 +1003,34 @@ function renderHarvestChips(){
 }
 
 function updateBackupStatus(){}
-function updateSyncStatus(state){
+function updateSyncStatus(state,retryIn){
   const el=document.getElementById('backup-status');
   if(!el)return;
-  if(state==='saving'){el.textContent='↑ Guardando…';el.style.color='var(--y)';}
-  else if(state==='ok'){el.textContent='✓ Sincronizado';el.style.color='var(--g)';}
-  else if(state==='err'){el.textContent='✗ Error al guardar';el.style.color='var(--r)';}
-  else if(state==='live'){el.textContent='● En vivo';el.style.color='var(--g)';}
+  el.style.fontWeight='600';
+  el.style.fontSize='11px';
+  el.style.padding='3px 8px';
+  el.style.borderRadius='99px';
+  el.style.transition='all .3s';
+  if(state==='saving'){
+    el.textContent='⬆ Guardando…';
+    el.style.background='#fef3c7';el.style.color='#92400e';el.style.border='1px solid #fcd34d';
+  } else if(state==='ok'){
+    el.textContent='✓ Sincronizado';
+    el.style.background='#dcfce7';el.style.color='#166534';el.style.border='1px solid #86efac';
+    // Vuelve a texto discreto después de 4s
+    setTimeout(()=>{
+      if(el.textContent==='✓ Sincronizado'){
+        el.style.background='transparent';el.style.border='none';el.style.color='var(--muted)';
+      }
+    },4000);
+  } else if(state==='err'){
+    const msg=retryIn>0?`✗ Sin conexión — reintentando en ${retryIn}s`:'✗ Sin conexión';
+    el.textContent=msg;
+    el.style.background='#fee2e2';el.style.color='#991b1b';el.style.border='1px solid #fca5a5';
+  } else if(state==='live'){
+    el.textContent='● En vivo';
+    el.style.background='transparent';el.style.border='none';el.style.color='var(--muted)';
+  }
 }
 function switchH(id){S.activeId=id;S._filter='todos';S._campoF='todos';renderAll();}
 
@@ -3309,31 +3371,57 @@ function saveEditHarvest(){
   showCampaignScreen();
   toast('Cosecha actualizada \u2713',true);
 }
+function _applyData(data){
+  S.harvests=data.harvests||[];
+  S.camiones=data.camiones||[];
+  S.silobolsas=data.silobolsas||[];
+  S.salidas=data.salidas||[];
+  S.entradas=data.entradas||[];
+  S.avances=data.avances||[];
+  S.extracciones=data.extracciones||[];
+  if(!S.activeId)S.activeId=data.activeId||S.harvests[0]?.id;
+  if(data.savedAt)_lastSavedAt=data.savedAt;
+}
+
+function _showScreen(){
+  document.getElementById('loading-screen').style.display='none';
+  const cs=document.getElementById('campaign-screen');
+  if(cs&&cs.style.display==='none'){renderAll();}
+  else{showCampaignScreen();}
+}
+
 function startRealtimeSync(){
+  // Paso 1: mostrar localStorage inmediatamente (carga instantánea)
+  const lsData=_lsLoad();
+  if(lsData&&lsData.harvests&&lsData.harvests.length){
+    _applyData(lsData);
+    document.getElementById('loading-screen').style.display='none';
+    showCampaignScreen();
+  }
+
+  // Paso 2: escuchar Firebase en tiempo real
   db.ref('cosecha_data').on('value',(snap)=>{
-    if(_syncing)return;
+    if(_syncing)return; // ignorar el eco de nuestro propio save
+
     const data=snap.val();
     if(data&&data.harvests){
-      S.harvests=data.harvests||[];
-      S.camiones=data.camiones||[];
-      S.silobolsas=data.silobolsas||[];
-      S.salidas=data.salidas||[];
-      S.entradas=data.entradas||[];
-      S.avances=data.avances||[];
-      S.extracciones=data.extracciones||[];
-      if(!S.activeId)S.activeId=data.activeId||S.harvests[0]?.id;
+      const fbTs=data.savedAt||0;
+      if(fbTs>=_lastSavedAt){
+        // Firebase tiene datos igual de nuevos o más nuevos → aplicar
+        _applyData(data);
+        _lsSave(data);
+        updateSyncStatus('ok');
+      } else {
+        // Nuestro localStorage es más nuevo (guardamos offline) → subir a Firebase
+        if(!_pendingSave)save();
+      }
     } else {
-      initDefaults();
-      save();
+      // Firebase vacío → subir lo que tenemos
+      const ls=_lsLoad();
+      if(ls&&ls.harvests&&ls.harvests.length){_applyData(ls);save();}
+      else{initDefaults();save();}
     }
-    document.getElementById('loading-screen').style.display='none';
-    const cs=document.getElementById('campaign-screen');
-    if(cs&&cs.style.display==='none'){
-      // Ya está dentro de una campaña — re-render todo al instante
-      renderAll();
-    } else {
-      showCampaignScreen();
-    }
+    _showScreen();
   });
 }
 

@@ -945,32 +945,82 @@ async function savePasswords() {
 function _fsDoc() { return _fsDb?.collection('siembras').doc(FS_ORG_ID); }
 
 // Indicador visual de sync
-function _syncStatus(estado) {
+function _syncStatus(estado, retryIn) {
   const dot  = document.getElementById('sync-dot');
   const txt  = document.getElementById('sync-text');
+  const ind  = document.getElementById('sync-indicator');
   if (!dot || !txt) return;
-  if (estado === 'syncing') { dot.className='syncing'; txt.textContent='Guardando…'; }
-  else if (estado === 'ok')  { dot.className=''; dot.style.background='#22c55e'; txt.textContent='Guardado'; }
-  else if (estado === 'error'){ dot.className='error'; txt.textContent='Sin conexión'; }
+  if (estado === 'syncing') {
+    dot.className = 'syncing'; txt.textContent = 'Guardando…';
+    if (ind) ind.style.opacity = '1';
+  } else if (estado === 'ok') {
+    dot.className = ''; dot.style.background = '#22c55e'; txt.textContent = 'Sincronizado';
+    if (ind) ind.style.opacity = '1';
+    // Volver a discreto después de 4s
+    setTimeout(() => { if (txt.textContent === 'Sincronizado' && ind) ind.style.opacity = '0.4'; }, 4000);
+  } else if (estado === 'error') {
+    dot.className = 'error';
+    txt.textContent = retryIn > 0 ? `Sin conexión — reintentando en ${retryIn}s` : 'Sin conexión';
+    if (ind) ind.style.opacity = '1';
+  }
 }
+
+let _cloudPending = false;
+let _cloudRetryTimer = null;
+let _cloudRetryCountdown = null;
+let _siembraLastSavedAt = 0;
 
 async function _saveToCloud(d) {
   if (!_fsDb) return;
+  _cloudPending = true;
   _syncStatus('syncing');
+  if (_cloudRetryTimer) { clearTimeout(_cloudRetryTimer); _cloudRetryTimer = null; }
+  if (_cloudRetryCountdown) { clearInterval(_cloudRetryCountdown); _cloudRetryCountdown = null; }
   try {
     await _fsDoc().set({
       campos: d.campos || [],
       registros: d.registros || [],
+      savedAt: d._savedAt || Date.now(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    _cloudPending = false;
     _syncStatus('ok');
   } catch(e) {
     console.warn('Cloud save error:', e);
-    _syncStatus('error');
+    _siembraScheduleRetry();
   }
 }
 
+function _siembraScheduleRetry() {
+  let secs = 10;
+  _syncStatus('error', secs);
+  if (_cloudRetryCountdown) clearInterval(_cloudRetryCountdown);
+  _cloudRetryCountdown = setInterval(() => {
+    secs--;
+    if (secs <= 0) {
+      clearInterval(_cloudRetryCountdown); _cloudRetryCountdown = null;
+      const latest = dbLoad();
+      _saveToCloud(latest);
+    } else {
+      _syncStatus('error', secs);
+    }
+  }, 1000);
+}
+
+// Avisar si hay cambios sin sincronizar al cerrar la pestaña
+window.addEventListener('beforeunload', e => {
+  if (_cloudPending) { e.preventDefault(); e.returnValue = ''; }
+});
+
 function _refreshCurrentView() {
+  // Antes de re-renderizar facturas, guardar automáticamente cualquier número
+  // que esté escrito en los inputs sin haber sido asignado todavía
+  if (st.globalView === 'facturas' && _filteredItems) {
+    _filteredItems.forEach((it, idx) => {
+      const inp = document.getElementById(`fi-num-${idx}`);
+      if (inp && inp.value.trim()) asignarFactura(idx);
+    });
+  }
   renderSidebar();
   updateFacturasBadge();
   if (st.globalView === 'facturas')      renderFacturasPendientes();
@@ -988,22 +1038,38 @@ function _setupCloudListener() {
   if (!_fsDb) return;
   if (_fsUnsubscribe) _fsUnsubscribe();
   _fsUnsubscribe = _fsDoc().onSnapshot(snap => {
-    if (!snap.exists) return;
-    const data = { campos: snap.data().campos || [], registros: snap.data().registros || [] };
-    const local = JSON.stringify({ campos: db.campos, registros: db.registros });
-    if (JSON.stringify(data) !== local) {
-      db = data;
-      localStorage.setItem(dataKey(st.orgId), JSON.stringify(db));
-      _refreshCurrentView();
-    }
-    // Actualizar estado colaborador
+    // Actualizar indicador colaborador
     const cd = document.getElementById('colab-dot');
     const ct = document.getElementById('colab-status-text');
-    if (cd) { cd.style.background='#4ade80'; }
+    if (cd) cd.style.background = '#4ade80';
     if (ct) ct.textContent = 'Conectado';
+
+    if (!snap.exists) return;
+    if (_cloudPending) return; // tenemos un save en vuelo, el eco de Firebase lo ignoramos
+
+    const snapData = snap.data();
+    const fbTs = snapData.savedAt || 0;
+    const localTs = db._savedAt || _siembraLastSavedAt || 0;
+
+    if (fbTs > localTs) {
+      // Firebase es más nuevo → aplicar
+      db = {
+        campos: snapData.campos || [],
+        registros: snapData.registros || [],
+        _savedAt: fbTs,
+      };
+      _siembraLastSavedAt = fbTs;
+      localStorage.setItem(dataKey(st.orgId), JSON.stringify(db));
+      _syncStatus('ok');
+      _refreshCurrentView();
+    } else if (fbTs < localTs) {
+      // Nuestro local es más nuevo (guardamos offline) → subir
+      if (!_cloudPending) _saveToCloud(db);
+    }
+    // Si fbTs === localTs: sin cambios reales, no hacer nada
   }, err => {
     console.warn('Snapshot error:', err);
-    _syncStatus('error');
+    _siembraScheduleRetry();
     const ct = document.getElementById('colab-status-text');
     if (ct) ct.textContent = 'Sin conexión';
   });
@@ -1029,6 +1095,8 @@ function orgsSave(o) { localStorage.setItem(ORGS_KEY, JSON.stringify(o)); }
 function dataKey(orgId) { return `agrolabores_v1_${orgId}`; }
 function dbLoad() { return JSON.parse(localStorage.getItem(dataKey(st.orgId)) || '{"campos":[],"registros":[]}'); }
 function dbSave(d) {
+  d._savedAt = Date.now();
+  _siembraLastSavedAt = d._savedAt;
   localStorage.setItem(dataKey(st.orgId), JSON.stringify(d));
   _saveToCloud(d);
 }
@@ -2305,6 +2373,7 @@ function renderFacturasPendientes() {
             <input type="text" placeholder="ej: 0001-00012345"
               id="fi-num-${it._idx}"
               onkeydown="if(event.key==='Enter') asignarFactura(${it._idx})"
+              onblur="if(this.value.trim()) asignarFactura(${it._idx})"
               class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-green-500">
           </td>
           <td>
@@ -2354,7 +2423,7 @@ function asignarFactura(idx) {
   const it = _filteredItems[idx];
   if (!it) return;
   const facturaNum = document.getElementById(`fi-num-${idx}`)?.value.trim();
-  if (!facturaNum) { alert('Ingresá el número de factura antes de asignar.'); return; }
+  if (!facturaNum) return;
   const newTotal = parseFloat(document.getElementById(`fi-total-${idx}`)?.value);
   const totalOriginal = it.totalOriginal;
 
