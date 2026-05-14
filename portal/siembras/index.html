@@ -73,6 +73,9 @@
     body.modo-colaborador #tab-content-registros button { display:none !important; }
     body.modo-colaborador #tab-content-registros select,
     body.modo-colaborador #tab-content-registros input { pointer-events:none; }
+    /* Barra de filtros: siempre interactiva aunque sea modo colaborador */
+    body.modo-colaborador #registros-filter-bar select { pointer-events:auto !important; opacity:1 !important; }
+    body.modo-colaborador #registros-filter-bar button { display:inline-flex !important; pointer-events:auto !important; }
     /* Facturas: solo los inputs de factura y botón asignar son interactivos */
     body.modo-colaborador #facturas-body input[id^="fi-total"] { pointer-events:none; opacity:.6; }
     body.modo-colaborador #facturas-body .flex.items-center.gap-3 button { display:none !important; }
@@ -356,7 +359,7 @@
 
     <!-- Registros -->
     <div id="tab-content-registros" class="hidden">
-      <div class="bg-white rounded-xl border border-gray-200 p-3 mb-4 flex flex-wrap gap-2 items-center">
+      <div id="registros-filter-bar" class="bg-white rounded-xl border border-gray-200 p-3 mb-4 flex flex-wrap gap-2 items-center">
         <select id="filter-lote" onchange="renderRegistros()"
           class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-green-500">
           <option value="">Todos los lotes</option>

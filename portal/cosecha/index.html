@@ -2322,7 +2322,7 @@ function delExtraccion(id){
 
 function _renderExtraccionesCampo(campoId,campoKgTotal){
   const exts=getExtraccionesCampo(campoId);
-  const totalExtraido=exts.reduce((a,e)=>a+(+e.kgN||0),0);
+  const totalExtraido=exts.reduce((a,e)=>a+kgEfectivoExt(e),0);
   const restante=Math.max(0,campoKgTotal-totalExtraido);
   const pct=campoKgTotal?Math.min(100,totalExtraido/campoKgTotal*100):0;
 
